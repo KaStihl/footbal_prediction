@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Predikcie zápasov</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="demo-banner" class="demo-banner" hidden>DEMO dáta: fiktívne tímy a vygenerované texty. Slúži len na vývoj rozhrania, nie sú to reálne predikcie.</div>
+<header class="top">
+  <div class="wrap">
+    <div class="title-row">
+      <h1>Predikcie zápasov</h1>
+      <div class="stamp" id="stamp" aria-live="polite"></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sekcie">
+      <button role="tab" data-tab="interesting" aria-selected="true">Zaujímavé</button>
+      <button role="tab" data-tab="weekend" aria-selected="false">Víkend PL + BL</button>
+      <button role="tab" data-tab="nations_league" aria-selected="false">Liga národov</button>
+      <button role="tab" data-tab="track" aria-selected="false">Track record</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="app" tabindex="-1">
+  <p class="muted">Načítavam…</p>
+</main>
+<footer class="wrap foot">
+  <p>Súkromný nástroj. Štatistický model (Poissonov model s časovým vážením a Dixon-Coles korekciou) + analytik Claude s webovým vyhľadávaním.
+  Pravdepodobnosti sú odhady, nie stávkové rady. Presné skóre sa trafí zriedka (~10 %); sleduj záložku Track record.</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

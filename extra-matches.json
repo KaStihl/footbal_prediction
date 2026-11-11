@@ -1,0 +1,4 @@
+{
+  "_help": "Ručne pridané zápasy. Do fixture_ids vlož ID zápasu z API-Football (zistíš: python -m pipeline find-team \"Arsenal\", potom python -m pipeline next-fixtures <team_id>). Zápas sa objaví v záložke Zaujímavé aj keď je mimo 14-dňového okna.",
+  "fixture_ids": []
+}
