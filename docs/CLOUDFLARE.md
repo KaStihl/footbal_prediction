@@ -1,6 +1,14 @@
-# Cloudflare Pages + Access (súkromný prístup)
+# Cloudflare + Access (súkromný prístup)
 
 Stránka je čisto statická (priečinok `site/`), bez build kroku.
+
+## Varianta Workers (aktuálne nastavená)
+
+Worker `footbal-prediction` je pripojený na tento repozitár (Workers Builds). Konfiguráciu má `wrangler.jsonc` v koreni repa: servuje priečinok `site/`.
+V dashboarde: Worker → Settings → Build: **Build command** prázdny, **Deploy command** `npx wrangler deploy`, **Production branch** = vetva, na ktorej beží workflow (`claude/football-predictions-html-hsgyxe` alebo `main`).
+Súkromie: Worker → Settings → Domains & Routes → pri `workers.dev` zapni **Enable Cloudflare Access** (alebo vytvor Access aplikáciu na túto doménu, pozri nižšie).
+
+## Varianta Pages
 
 ## 1. Pages projekt
 

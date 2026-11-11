@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers (static assets): serves the ./site folder, no Worker code.
+  // The name must match the Worker created in the Cloudflare dashboard.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "footbal-prediction",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./site"
+  }
+}
