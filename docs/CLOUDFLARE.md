@@ -1,37 +1,33 @@
-# Cloudflare + Access (súkromný prístup)
+# Cloudflare (Worker `footbal-prediction`)
 
-Stránka je čisto statická (priečinok `site/`), bez build kroku.
+Všetko beží v jednom Workeri, ktorý je napojený na tento repozitár (Workers Builds). Po každom pushi do vetvy `claude/football-predictions-html-hsgyxe` sa nasadí sám.
 
-## Varianta Workers (aktuálne nastavená)
+## Nastavenie buildu (Worker → Settings → Build)
+* Root directory: `/` · Build command: *(prázdne)* · Deploy command: `npx wrangler deploy`
+* Branch control → Production branch: `claude/football-predictions-html-hsgyxe`
 
-Worker `footbal-prediction` je pripojený na tento repozitár (Workers Builds). Konfiguráciu má `wrangler.jsonc` v koreni repa: servuje priečinok `site/`.
-V dashboarde: Worker → Settings → Build: **Build command** prázdny, **Deploy command** `npx wrangler deploy`, **Production branch** = vetva, na ktorej beží workflow (`claude/football-predictions-html-hsgyxe` alebo `main`).
-Súkromie (bez karty, bez Zero Trust): `src/worker.js` pýta HTTP Basic heslo pred každou požiadavkou (aj pred dátami). Heslo je secret `SITE_PASSWORD`:
-Worker → **Settings → Variables and Secrets → Add** → Type **Secret**, Variable name `SITE_PASSWORD`, Value = tvoje heslo → **Deploy**. Používateľské meno je ľubovoľné. Kým secret nie je nastavený, stránka vracia 503 (zatvorená).
-Cloudflare Access (Zero Trust) je alternatíva, ale vyžaduje platobnú kartu aj pri bezplatnom pláne.
+## Secrets (Worker → Settings → Variables and Secrets → Add → Type: **Secret**)
+| Názov | Hodnota |
+|---|---|
+| `SITE_PASSWORD` | heslo k stránke (meno pri prihlásení je ľubovoľné) |
+| `API_FOOTBALL_KEY` | kľúč z https://dashboard.api-football.com |
+| `ANTHROPIC_API_KEY` | kľúč z https://console.anthropic.com (bez neho beží len štatistický model) |
 
-## Varianta Pages
+## Voliteľné premenné (Type: **Text**)
+| Názov | Predvolené | Význam |
+|---|---|---|
+| `EXTRA_FIXTURE_IDS` | – | ručne pridané zápasy, ID oddelené čiarkou (zistíš cez `/api/find-fixtures?team=Názov`) |
+| `ANALYST_MODEL` | `claude-opus-5-5` | lacnejšie napr. `claude-sonnet-5-5` |
+| `ANALYST_EFFORT` | `medium` | `low` / `medium` / `high` |
+| `ANALYST_MAX_MATCHES` | `16` | max. počet analýz na jeden beh |
+| `API_FOOTBALL_MAX_CALLS` | `45` | volaní API-Football na beh (free plán: 100/deň) |
+| `API_FOOTBALL_RPM` | `10` | volaní za minútu (free: 10, Pro: 300) |
+| `ANALYST_ALLOWED_DOMAINS` | – | obmedzí webové vyhľadávanie analytika na tieto domény |
 
-## 1. Pages projekt
+Premenné pridané v dashboarde môže ďalší deploy z repa prepísať, iba ak sú definované aj vo `wrangler.jsonc` (tam nie sú, takže ostanú). Secrets ostávajú vždy.
 
-1. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git** → vyber repo `KaStihl/footbal_prediction` (pri prvom použití povoľ Cloudflare GitHub appke prístup k repu).
-2. **Production branch**: `main` (pozri poznámku o vetve nižšie).
-3. **Framework preset**: None · **Build command**: *(prázdne)* · **Build output directory**: `site`.
-4. Save and Deploy. Dostaneš adresu `https://<projekt>.pages.dev`.
+## Plánovanie
+`wrangler.jsonc` → `triggers.crons`: denne 05:30 UTC a štvrtok až nedeľa 09:15 UTC. Ručne: tlačidlo **Prepočítať teraz** na stránke.
 
-Keď workflow v Actions pushne nové dáta, Cloudflare nasadí novú verziu automaticky.
-
-## 2. Súkromie (Cloudflare Access, zadarmo do 50 používateľov)
-
-Najjednoduchšie: projekt → **Settings → General → Access policy → Enable** (chráni produkčnú aj preview adresu).
-
-Alebo ručne: **Zero Trust → Access → Applications → Add an application → Self-hosted**
-* Application domain: `<projekt>.pages.dev` (pridaj aj `*.<projekt>.pages.dev` pre preview nasadenia)
-* Policy: **Allow** · Include: **Emails** → tvoj e-mail
-* Identity provider: *One-time PIN* (kód príde e-mailom, nič iné netreba nastavovať)
-
-Odteraz sa pri otvorení stránky (aj JSON dát) zobrazí prihlásenie. Stránka má navyše `noindex` a `robots.txt` Disallow.
-
-## Poznámka k vetve
-
-Plánované workflow (cron) v GitHub Actions bežia len na **predvolenej vetve** repa a Cloudflare produkčne nasadzuje svoju *production branch*. Zlúč vývojovú vetvu do `main` a nastav `main` ako predvolenú (GitHub → Settings → Branches), potom oba fungujú bez ďalších úprav.
+## Free plán
+Worker na free pláne má limit ~10 ms CPU na jedno spustenie. Výpočet je preto rozdelený na ~80–110 malých krokov (Durable Object + alarmy), každý s malou spotrebou CPU (čakanie na API sa nepočíta). Krok, ktorý limit prekročí 2×, sa preskočí a zapíše sa do upozornení na stránke. Ak by sa to opakovalo (napr. „krok rows … preskočený“), pomôže Workers Paid (5 USD/mes., limit 30 s).

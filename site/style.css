@@ -20,6 +20,10 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 syst
 .title-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding: 12px 0 4px; }
 h1 { font-size: 1.25rem; margin: 0; }
 .stamp { color: var(--muted); font-size: .85rem; }
+.run-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.run-btn { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; min-height: 36px; }
+.run-btn:disabled { opacity: .5; cursor: default; }
+.run-status { color: var(--muted); font-size: .8rem; min-height: 1em; }
 .tabs { display: flex; gap: 4px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: none; }
 .tabs button { flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; min-height: 40px; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }

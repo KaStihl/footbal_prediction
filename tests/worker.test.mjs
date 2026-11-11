@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker from "../src/worker.js";
+import { gate } from "../src/auth.js";
 
 const assets = { fetch: async () => new Response("<html>ok</html>", { status: 200 }) };
 const auth = (pw, user = "x") => ({ Authorization: "Basic " + Buffer.from(`${user}:${pw}`).toString("base64") });
-const call = (headers = {}, env = { SITE_PASSWORD: "s3cret!", ASSETS: assets }) =>
-  worker.fetch(new Request("https://example.test/data/predictions.json", { headers }), env);
+const call = async (headers = {}, env = { SITE_PASSWORD: "s3cret!", ASSETS: assets }) => {
+  const req = new Request("https://example.test/data/predictions.json", { headers });
+  return (await gate(req, env)) || env.ASSETS.fetch(req);
+};
 
 test("no credentials -> 401 with challenge", async () => {
   const r = await call();

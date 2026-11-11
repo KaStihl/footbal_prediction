@@ -1,7 +1,6 @@
 "use strict";
 (() => {
-  const demo = new URLSearchParams(location.search).has("demo");
-  const base = demo ? "data/demo/" : "data/";
+  const base = "data/";
   const $app = document.getElementById("app");
   const TABS = ["interesting", "weekend", "nations_league", "track"];
   let state = { pred: null, meta: null, track: null };
@@ -37,9 +36,49 @@
         (an.enabled ? `analytik: ${an.matches_analysed_this_run} zápasov${cost}` : "bez analytika");
       render();
     } catch (e) {
-      $app.innerHTML = `<div class="empty"><p><b>Zatiaľ nie sú dáta.</b></p><p>Spusti workflow „Daily predictions“ v GitHub Actions.</p><p class="muted">${esc(e.message)}</p></div>`;
+      $app.innerHTML = `<div class="empty"><p><b>Zatiaľ nie sú dáta.</b></p><p>Klikni na „Prepočítať teraz“. Prvý výpočet trvá niekoľko minút (sťahujú sa celé sezóny a analytik číta správy o tímoch).</p><p class="muted">${esc(e.message)}</p></div>`;
     }
   }
+
+  // ---- run control ---------------------------------------------------------
+  const $run = document.getElementById("run-btn");
+  const $prog = document.getElementById("run-status");
+  let polling = null;
+  const STEP = { fixtures: "sťahujem zápasy", extras: "ručne pridané zápasy", stats: "štatistiky zápasov", rows: "príprava dát", fit: "počítam model",
+    plan: "vyberám zápasy", entries: "forma a vzájomné zápasy", odds: "kurzy", inj: "zranenia", analyst_plan: "plán analytika",
+    analyst: "analytik číta správy", round: "prehľad kola", publish: "zverejňujem" };
+
+  function showStatus(s) {
+    if (!s || !s.id || s.done) {
+      $run.disabled = false;
+      $prog.textContent = s && s.done && s.warnings ? `Posledný beh: ${s.warnings} upozornení` : "";
+      return false;
+    }
+    $run.disabled = true;
+    $prog.textContent = `Prebieha výpočet: krok ${s.step + 1}/${s.steps} (${STEP[s.current] || s.current}) · analytik ${s.analysed}`;
+    return true;
+  }
+
+  async function poll() {
+    try {
+      const s = await (await fetch("api/status", { cache: "no-store" })).json();
+      const running = showStatus(s);
+      if (!running && polling) { clearInterval(polling); polling = null; load(); }
+      if (running && !polling) polling = setInterval(poll, 4000);
+    } catch { /* ignore transient errors */ }
+  }
+
+  $run.addEventListener("click", async () => {
+    $run.disabled = true;
+    try {
+      const r = await (await fetch("api/run", { method: "POST" })).json();
+      showStatus(r.job);
+      if (!polling) polling = setInterval(poll, 4000);
+    } catch (e) {
+      $prog.textContent = `Nepodarilo sa spustiť: ${e.message}`;
+      $run.disabled = false;
+    }
+  });
 
   // ---- building blocks -----------------------------------------------------
   function formChips(f) {
@@ -238,4 +277,5 @@
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.tab; }));
   window.addEventListener("hashchange", () => { if (state.pred) { render(); window.scrollTo({ top: 0 }); } });
   load();
+  poll();
 })();

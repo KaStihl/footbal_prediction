@@ -1,15 +1,25 @@
 {
-  // Cloudflare Worker: password gate (src/worker.js) in front of the static ./site folder.
+  // Cloudflare Worker: password gate + static site (./site) + daily prediction pipeline.
   // The name must match the Worker created in the Cloudflare dashboard.
-  // The password is NOT stored here: set the secret SITE_PASSWORD in
-  // Worker -> Settings -> Variables and Secrets (type: Secret).
+  // Secrets (Worker -> Settings -> Variables and Secrets, type Secret):
+  //   SITE_PASSWORD, API_FOOTBALL_KEY, ANTHROPIC_API_KEY
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "footbal-prediction",
   "main": "src/worker.js",
   "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./site",
     "binding": "ASSETS",
     "run_worker_first": true
-  }
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PIPELINE", "class_name": "Pipeline" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Pipeline"] }],
+  "triggers": {
+    // daily 05:30 UTC + Thu-Sun 09:15 UTC refresh (team news, line-ups, odds)
+    "crons": ["30 5 * * *", "15 9 * * THU,FRI,SAT,SUN"]
+  },
+  "observability": { "enabled": true }
 }

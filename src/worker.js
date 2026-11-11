@@ -1,46 +1,59 @@
-// Password gate in front of the static site (free alternative to Cloudflare Access).
-// Every request must carry HTTP Basic credentials whose password equals the
-// SITE_PASSWORD secret. If the secret is not configured the site stays closed.
-// The username is ignored. Static files are served through the ASSETS binding.
+// Entry point: password gate + routes + cron.
+//   /data/*.json    -> pipeline output stored in the Durable Object
+//   POST /api/run   -> start a run now        GET /api/status -> progress of the current/last run
+//   everything else -> static files in ./site
+// Cron triggers (wrangler.jsonc) start the daily run; the Durable Object then works step by step.
 
-const REALM = 'Basic realm="Predikcie", charset="UTF-8"';
+import { gate } from "./auth.js";
+import { ApiError, apiGet } from "./api.js";
+import { settings } from "./config.js";
+import { Pipeline } from "./pipeline.js";
 
-async function sha256(text) {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-}
+export { Pipeline };
 
-// Constant-time comparison of the SHA-256 digests (equal length, no early exit).
-async function safeEqual(a, b) {
-  const [da, db] = await Promise.all([sha256(a), sha256(b)]);
-  let diff = 0;
-  for (let i = 0; i < da.length; i++) diff |= da[i] ^ db[i];
-  return diff === 0;
-}
+const pipeline = (env) => env.PIPELINE.get(env.PIPELINE.idFromName("main"));
 
-function passwordFrom(request) {
-  const header = request.headers.get("Authorization") || "";
-  const [scheme, encoded] = header.split(" ");
-  if (!scheme || scheme.toLowerCase() !== "basic" || !encoded) return null;
+/** Helper for EXTRA_FIXTURE_IDS: next fixtures of a team found by name (2 API-Football calls). */
+async function findFixtures(team, env) {
+  const cfg = settings(env);
+  const json = (o, status = 200) => new Response(JSON.stringify(o, null, 1), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+  if (team.trim().length < 3) return json({ error: "použi ?team=Názov (aspoň 3 znaky), napr. /api/find-fixtures?team=Slovakia" }, 400);
   try {
-    const decoded = new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)));
-    const i = decoded.indexOf(":");
-    return i < 0 ? null : decoded.slice(i + 1);
-  } catch {
-    return null;
+    const teams = (await apiGet(cfg.apiKey, "/teams", { search: team.trim() }, fetch, cfg.apiBase)).response;
+    if (!teams.length) return json({ error: "tím sa nenašiel" }, 404);
+    const t = teams[0].team;
+    const fx = (await apiGet(cfg.apiKey, "/fixtures", { team: t.id, next: 10, timezone: "UTC" }, fetch, cfg.apiBase)).response;
+    return json({
+      team: { id: t.id, name: t.name, country: t.country }, other_matches: teams.slice(1, 5).map((x) => x.team.name),
+      hint: "ID zápasu (fixture_id) pridaj do premennej EXTRA_FIXTURE_IDS vo Workeri (čiarkami oddelené).",
+      fixtures: fx.map((f) => ({ fixture_id: f.fixture.id, kickoff_utc: f.fixture.date, match: `${f.teams.home.name} - ${f.teams.away.name}`, competition: f.league.name })),
+    });
+  } catch (e) {
+    return json({ error: e instanceof ApiError ? e.message : "chyba" }, 502);
   }
 }
 
-const headers = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" };
-
 export default {
   async fetch(request, env) {
-    if (!env.SITE_PASSWORD) {
-      return new Response("Site is not configured (missing SITE_PASSWORD secret).", { status: 503, headers });
+    const denied = await gate(request, env);
+    if (denied) return denied;
+    const url = new URL(request.url);
+    if (/^\/data\/(predictions|meta|track)\.json$/.test(url.pathname)) {
+      return pipeline(env).fetch(new Request(`https://pipeline${url.pathname}`));
     }
-    const given = passwordFrom(request);
-    if (given === null || !(await safeEqual(given, env.SITE_PASSWORD))) {
-      return new Response("Authentication required.", { status: 401, headers: { ...headers, "WWW-Authenticate": REALM } });
+    if (url.pathname === "/api/run" && request.method === "POST") {
+      return pipeline(env).fetch(new Request("https://pipeline/start", { method: "POST", body: JSON.stringify({ kind: "manual" }) }));
+    }
+    if (url.pathname === "/api/find-fixtures") {
+      return findFixtures(url.searchParams.get("team") || "", env);
+    }
+    if (url.pathname === "/api/status") {
+      return pipeline(env).fetch(new Request("https://pipeline/status"));
     }
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(pipeline(env).fetch(new Request("https://pipeline/start", { method: "POST", body: JSON.stringify({ kind: "cron" }) })));
   },
 };
