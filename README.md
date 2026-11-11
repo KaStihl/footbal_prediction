@@ -5,7 +5,7 @@ Denne aktualizovaná statická stránka s predikciami futbalových zápasov: zau
 ## Ako to funguje
 
 ```
-GitHub Actions (cron)                                      Cloudflare Pages (+ Access)
+GitHub Actions (cron)                                      Cloudflare Worker (heslo) + statické súbory
  ├─ API-Football  → rozpis, výsledky, xG/strely/držanie, zranenia, kurzy
  ├─ štatistický model (pipeline/model.py)  → xG, pravdepodobnosti, skóre
  ├─ Claude analytici (pipeline/analyst.py) → správy o kádri z webu, ±15 % úprava xG, zdôvodnenie (sk)
@@ -25,8 +25,8 @@ GitHub Actions (cron)                                      Cloudflare Pages (+ A
 2. **Anthropic API kľúč** na <https://console.anthropic.com/> (pre analytikov).
 3. V GitHub repo → *Settings → Secrets and variables → Actions*:
    * Secrets: `API_FOOTBALL_KEY`, `ANTHROPIC_API_KEY`
-   * Variables (voliteľné): `API_FOOTBALL_MAX_CALLS` (free: 90, Pro: napr. 3000), `API_FOOTBALL_RPM` (free: 10, Pro: 300), `ANALYST_MODEL` (predvolene `claude-opus-5-5`; lacnejšie napr. `claude-sonnet-5-5`), `ANALYST_EFFORT` (`low|medium|high`), `ANALYST_MAX_MATCHES` (predvolene 16 na beh), `ANALYST_ALLOWED_DOMAINS` (čiarkami oddelené domény, ak chceš analytika obmedziť len na vybrané weby)
-4. **Cloudflare Pages** – pozri [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+   * Variables (voliteľné): `API_FOOTBALL_MAX_CALLS` (na jeden beh; free: 45 = dva behy denne, Pro: napr. 3000), `API_FOOTBALL_RPM` (free: 10, Pro: 300), `ANALYST_MODEL` (predvolene `claude-opus-5-5`; lacnejšie napr. `claude-sonnet-5-5`), `ANALYST_EFFORT` (`low|medium|high`), `ANALYST_MAX_MATCHES` (predvolene 16 na beh), `ANALYST_ALLOWED_DOMAINS` (čiarkami oddelené domény, ak chceš analytika obmedziť len na vybrané weby)
+4. **Cloudflare** – Worker `footbal-prediction` je napojený na repo a po každom pushi (aj od bota s novými dátami) sa nasadí sám. Heslo: Worker → Settings → Variables and Secrets → Secret `SITE_PASSWORD`. Podrobnosti v [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
 5. Spusti workflow **Daily predictions** ručne (*Actions → Daily predictions → Run workflow*). Prvý beh nechaj bez prestávky skontrolovať v logu a v `site/data/meta.json` (pole `warnings`).
 
 Workflow beží denne o 05:30 UTC a vo štvrtok–nedeľu ešte o 09:15 UTC (nové správy o kádri a zostavy). GitHub cron nie je presný, môže meškať.
@@ -48,7 +48,10 @@ Ručne pridaný zápas (aj mimo 14-dňového okna): `python -m pipeline find-tea
 
 * **API-Football** – rozpočet volaní na beh určuje `API_FOOTBALL_MAX_CALLS`. Poradie priorít: rozpisy súťaží, doťahovanie štatistík (max `STATS_MAX_CALLS`=12 volaní na beh), kurzy a zranenia pre zápasy v záložkách. Odpovede sa cachujú (`.cache/api`, ukladá sa cez actions/cache).
 * **Anthropic API** – platí sa za tokeny + webové vyhľadávania. Každý beh zapíše spotrebu do `site/data/meta.json` → `analyst.usage`; z prvého behu si spočítaj reálnu cenu. Analytik sa spúšťa len pre zápasy v záložkách do 96 h pred výkopom a len ak sa zmenili vstupy alebo je analýza staršia ako 20 h. Zníž cenu cez `ANALYST_MODEL`, `ANALYST_EFFORT`, `ANALYST_MAX_MATCHES`.
-* Ak analytik zlyhá (limit, chyba), stránka dál ukazuje čísla zo štatistického modelu a poslednú úspešnú analýzu.
+* Ak analytik zlyhá (limit, chyba), stránka ďalej ukazuje čísla zo štatistického modelu a poslednú úspešnú analýzu.
+* Ak sa nepodarí stiahnuť žiadne zápasy (zlý kľúč, výpadok API), beh skončí chybou (červený beh v Actions, GitHub pošle e-mail) a predošlé dáta na stránke ostanú nedotknuté.
+* Klient API-Football sleduje aj skutočný zvyšok denného limitu (hlavička `x-ratelimit-requests-remaining`) a pred jeho vyčerpaním zastaví.
+* Odhad ceny analytika za beh je v `meta.json` → `analyst.est_cost_usd` a zobrazuje sa aj v hlavičke stránky.
 
 ## Čo od toho čakať
 

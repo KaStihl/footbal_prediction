@@ -96,7 +96,7 @@ def env_int(name: str, default: int) -> int:
 # Runtime knobs (set as repo variables / secrets in GitHub Actions) ----------
 API_KEY = lambda: env("API_FOOTBALL_KEY")                       # noqa: E731
 API_RPM = lambda: env_int("API_FOOTBALL_RPM", 10)               # free plan = 10/min  # noqa: E731
-API_MAX_CALLS = lambda: env_int("API_FOOTBALL_MAX_CALLS", 90)   # free plan = 100/day  # noqa: E731
+API_MAX_CALLS = lambda: env_int("API_FOOTBALL_MAX_CALLS", 45)   # free plan = 100/day, up to 2 runs/day  # noqa: E731
 ODDS_BOOKMAKER = lambda: env_int("ODDS_BOOKMAKER", 8)           # 8 = Bet365  # noqa: E731
 ANALYST_MODEL = lambda: env("ANALYST_MODEL", "claude-opus-5-5")  # noqa: E731
 ANALYST_EFFORT = lambda: env("ANALYST_EFFORT", "medium")        # noqa: E731

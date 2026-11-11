@@ -31,10 +31,13 @@
       const [pred, meta, track] = await Promise.all([getJson("predictions.json"), getJson("meta.json"), getJson("track.json")]);
       state = { pred, meta, track };
       document.getElementById("demo-banner").hidden = !meta.demo;
-      document.getElementById("stamp").textContent = `Aktualizované ${ago(meta.generated_at)}`;
+      const an = meta.analyst || {};
+      const cost = an.est_cost_usd != null && an.matches_analysed_this_run ? ` (~${an.est_cost_usd.toFixed(2)} USD)` : "";
+      document.getElementById("stamp").textContent = `Aktualizované ${ago(meta.generated_at)} · ` +
+        (an.enabled ? `analytik: ${an.matches_analysed_this_run} zápasov${cost}` : "bez analytika");
       render();
     } catch (e) {
-      $app.innerHTML = `<div class="empty"><p><b>Zatiaľ nie sú dáta.</b></p><p>Spusti workflow „Daily predictions“ v GitHub Actions .</p><p class="muted">${esc(e.message)}</p></div>`;
+      $app.innerHTML = `<div class="empty"><p><b>Zatiaľ nie sú dáta.</b></p><p>Spusti workflow „Daily predictions“ v GitHub Actions.</p><p class="muted">${esc(e.message)}</p></div>`;
     }
   }
 

@@ -41,6 +41,7 @@ class ApiFootball:
         self.cache_hits = 0
         self._last_call = 0.0
         self.remaining_daily: int | None = None
+        self.daily_reserve = 3   # leave a few requests for manual `doctor` / `find-team`
 
     # -- low level -----------------------------------------------------------
     def _cache_path(self, path: str, params: dict) -> Path:
@@ -96,6 +97,8 @@ class ApiFootball:
                 pass
         if self.calls >= self.max_calls:
             raise BudgetExceeded(f"request budget {self.max_calls} reached at {path}")
+        if self.remaining_daily is not None and self.remaining_daily <= self.daily_reserve:
+            raise BudgetExceeded(f"daily API quota nearly used up ({self.remaining_daily} left) at {path}")
         self.calls += 1
         payload = self._http(path, params)
         self._check_errors(payload, path)

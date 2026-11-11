@@ -131,5 +131,34 @@ class AnalystFlowTests(unittest.TestCase):
         self.assertIsInstance(res[1], str)
 
 
+class SafetyTests(unittest.TestCase):
+    def test_failed_fetch_does_not_overwrite_site_data(self):
+        class DeadApi(fake.FakeApi):
+            def league_fixtures(self, league, season, ttl):
+                return []
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "out"
+            out.mkdir()
+            (out / "predictions.json").write_text('{"keep": true}')
+            now = datetime(2026, 11, 11, 12, tzinfo=timezone.utc)
+            with self.assertRaises(run.DataUnavailable):
+                run.build(DeadApi(now), None, out_dir=out, state_dir=Path(d) / "s", now=now)
+            self.assertEqual(json.loads((out / "predictions.json").read_text()), {"keep": True})
+
+    def test_daily_quota_guard(self):
+        from pipeline.apifootball import ApiFootball, BudgetExceeded
+        with tempfile.TemporaryDirectory() as d:
+            api = ApiFootball("k", Path(d), rpm=1000, max_calls=50)
+            api.remaining_daily = 2
+            with self.assertRaises(BudgetExceeded):
+                api.get("/fixtures", {"league": 39, "season": 2026})
+
+    def test_cost_estimate(self):
+        u = analyst.Usage()
+        u.input, u.output, u.searches = 1_000_000, 100_000, 100
+        self.assertAlmostEqual(u.cost_usd("claude-opus-5-5"), 4.0 + 2.0 + 1.0)
+        self.assertIsNone(u.cost_usd("unknown-model"))
+
+
 if __name__ == "__main__":
     unittest.main()

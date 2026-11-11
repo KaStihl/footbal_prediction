@@ -25,6 +25,10 @@ DERBIES = [
 ]
 
 
+class DataUnavailable(RuntimeError):
+    """No fixtures could be fetched; keep the previously published data untouched."""
+
+
 def jload(path: Path, default):
     try:
         return json.loads(path.read_text())
@@ -182,6 +186,8 @@ def build(api, claude, *, out_dir: Path, state_dir: Path, now: datetime, use_ana
 
     # 1) fixtures + stats --------------------------------------------------------
     matches = fetch_matches(api, now, warnings, quiet_empty=demo)
+    if not matches:
+        raise DataUnavailable("; ".join(warnings) or "no fixtures returned")
     n_stats = backfill_stats(api, matches, stats, now,
                              stats_calls if stats_calls is not None else config.env_int("STATS_MAX_CALLS", 12), warnings)
 
@@ -330,7 +336,8 @@ def build(api, claude, *, out_dir: Path, state_dir: Path, now: datetime, use_ana
         "api": {"calls": api.calls, "cache_hits": api.cache_hits, "remaining_daily": api.remaining_daily,
                 "stats_fetched": n_stats},
         "analyst": {"enabled": bool(use_analyst and claude is not None), "model": config.ANALYST_MODEL(),
-                    "matches_analysed_this_run": analysed, "usage": usage.as_dict()},
+                    "matches_analysed_this_run": analysed, "usage": usage.as_dict(),
+                    "est_cost_usd": usage.cost_usd(config.ANALYST_MODEL())},
         "weekend": {"label": w_label, "from": w_start.isoformat(), "to": w_end.isoformat()},
         "nations_league_rounds": nl_rounds[:2],
         "model": {"teams_club": len(strengths["club"].att), "teams_national": len(strengths["national"].att),
@@ -528,8 +535,14 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_fixtures(api, args.team_id)
 
     claude = None if args.no_analyst else make_claude()
-    meta = build(api, claude, out_dir=Path(args.out), state_dir=Path(args.state), now=datetime.now(timezone.utc),
-                 use_analyst=not args.no_analyst)
+    if not args.no_analyst and claude is None:
+        print("WARNING: ANTHROPIC_API_KEY is not set - running without the analyst", file=sys.stderr)
+    try:
+        meta = build(api, claude, out_dir=Path(args.out), state_dir=Path(args.state), now=datetime.now(timezone.utc),
+                     use_analyst=not args.no_analyst)
+    except DataUnavailable as e:
+        print(f"ERROR: no data fetched, previous site data left untouched: {e}", file=sys.stderr)
+        return 1
     print(json.dumps({k: meta[k] for k in ("api", "analyst", "weekend", "model", "warnings")}, ensure_ascii=False, indent=1))
     return 0
 

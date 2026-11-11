@@ -133,6 +133,19 @@ class Usage:
         if stu is not None:
             self.searches += getattr(stu, "web_search_requests", 0) or 0
 
+    # USD per million tokens (input, output); web search USD per 1000 searches. Estimate only.
+    PRICES = {"claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50),
+              "claude-fable-5-2": (8.0, 40.0)}
+    SEARCH_PER_1000 = 10.0
+
+    def cost_usd(self, model: str) -> float | None:
+        p = self.PRICES.get(model)
+        if p is None:
+            return None
+        inp, out = p
+        cost = (self.input * inp + self.cache_read * inp * 0.1 + self.cache_write * inp * 1.25 + self.output * out) / 1e6
+        return round(cost + self.searches * self.SEARCH_PER_1000 / 1000, 3)
+
     def as_dict(self) -> dict:
         return {"calls": self.calls, "input_tokens": self.input, "output_tokens": self.output,
                 "cache_read_tokens": self.cache_read, "cache_write_tokens": self.cache_write,
