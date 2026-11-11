@@ -6,7 +6,9 @@ Stránka je čisto statická (priečinok `site/`), bez build kroku.
 
 Worker `footbal-prediction` je pripojený na tento repozitár (Workers Builds). Konfiguráciu má `wrangler.jsonc` v koreni repa: servuje priečinok `site/`.
 V dashboarde: Worker → Settings → Build: **Build command** prázdny, **Deploy command** `npx wrangler deploy`, **Production branch** = vetva, na ktorej beží workflow (`claude/football-predictions-html-hsgyxe` alebo `main`).
-Súkromie: Worker → Settings → Domains & Routes → pri `workers.dev` zapni **Enable Cloudflare Access** (alebo vytvor Access aplikáciu na túto doménu, pozri nižšie).
+Súkromie (bez karty, bez Zero Trust): `src/worker.js` pýta HTTP Basic heslo pred každou požiadavkou (aj pred dátami). Heslo je secret `SITE_PASSWORD`:
+Worker → **Settings → Variables and Secrets → Add** → Type **Secret**, Variable name `SITE_PASSWORD`, Value = tvoje heslo → **Deploy**. Používateľské meno je ľubovoľné. Kým secret nie je nastavený, stránka vracia 503 (zatvorená).
+Cloudflare Access (Zero Trust) je alternatíva, ale vyžaduje platobnú kartu aj pri bezplatnom pláne.
 
 ## Varianta Pages
 
