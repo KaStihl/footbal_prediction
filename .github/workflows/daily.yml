@@ -1,3 +1,4 @@
+# Runs the prediction pipeline; scheduled + manual (workflow_dispatch).
 name: Daily predictions
 
 on:
