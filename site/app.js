@@ -271,7 +271,9 @@
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
     const warns = (state.meta.warnings || []).length ? `<div class="warn-box"><b>Upozornenia z posledného behu:</b><ul class="plain">${state.meta.warnings.slice(0, 8).map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : "";
     const body = { interesting: renderInteresting, weekend: renderWeekend, nations_league: renderNations, track: renderTrack }[tab]();
-    $app.innerHTML = body + (tab === "track" ? "" : warns);
+    const plan = state.meta.api && state.meta.api.plan_blocked
+      ? `<div class="warn-box"><b>API-Football: tvoj plán nemá prístup k aktuálnej sezóne.</b> Bez nej nie sú rozpisy ani výsledky, takže predikcie budú neúplné alebo žiadne. Treba vyšší plán na <a href="https://dashboard.api-football.com" target="_blank" rel="noopener noreferrer">dashboard.api-football.com</a>.</div>` : "";
+    $app.innerHTML = plan + body + (tab === "track" ? "" : warns);
   }
 
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.tab; }));

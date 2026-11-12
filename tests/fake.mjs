@@ -83,12 +83,16 @@ export function makeWorld(nowMs, { teamsPerLeague = 20, seed = 7, heavy = false 
     leagues[`5:${k.endsWith(String(curSeason)) ? 2026 : 2024}`] = fx.map((f) => ({ ...f, league: { ...f.league, season: k.endsWith(String(curSeason)) ? 2026 : 2024 } }));
   }
   let remaining = 7400;
+  const limits = { rateLimitNext: 0, planBlockedSeasons: new Set() };
   const calls = [];
   async function fetchImpl(url) {
     const u = new URL(url);
     calls.push(u.pathname + u.search);
     remaining--;
     const p = Object.fromEntries(u.searchParams);
+    const hdr = { headers: { "x-ratelimit-requests-remaining": String(remaining) } };
+    if (limits.rateLimitNext > 0) { limits.rateLimitNext--; return new Response(JSON.stringify({ errors: { rateLimit: "Too many requests." }, response: [] }), hdr); }
+    if (p.season && limits.planBlockedSeasons.has(Number(p.season))) return new Response(JSON.stringify({ errors: { plan: "Free plans do not have access to this season" }, response: [] }), hdr);
     let response = [];
     if (u.pathname === "/fixtures" && p.id) response = Object.values(leagues).flat().filter((f) => f.fixture.id === Number(p.id));
     else if (u.pathname === "/fixtures" && p.ids) response = p.ids.split("-").map(Number).filter((i) => details[i]).map((i) => details[i]);
@@ -97,7 +101,7 @@ export function makeWorld(nowMs, { teamsPerLeague = 20, seed = 7, heavy = false 
     else if (u.pathname === "/injuries") response = [];
     return new Response(JSON.stringify({ errors: [], response }), { headers: { "x-ratelimit-requests-remaining": String(remaining) } });
   }
-  return { fetchImpl, calls, leagues };
+  return { fetchImpl, calls, leagues, limits };
 }
 
 export function fakeClaude(counter = { n: 0 }) {

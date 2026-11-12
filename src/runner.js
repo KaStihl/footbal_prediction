@@ -8,12 +8,14 @@ import * as cfgm from "./config.js";
 import * as D from "./data.js";
 import * as M from "./model.js";
 import * as T from "./track.js";
-import { ApiError, apiGet } from "./api.js";
+import { ApiError, PlanError, RateLimitError, apiGet } from "./api.js";
 import * as AN from "./analyst.js";
 
 const { F } = D;
 
 const MAX_ATTEMPTS = 2;
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_PAUSE_MS = 61_000;
 const FIT_SWEEPS = 6;
 const MAX_FIT_STEPS = 40;
 const STALE_MS = 40 * 3600e3; // analysis older than this is flagged in the UI
@@ -91,6 +93,14 @@ export class Runner {
         delay = res.delay ?? 200;
         if (res.insert && res.insert.length) job.steps.splice(job.i + 1, 0, ...res.insert);
       } catch (e) {
+        if (e instanceof RateLimitError && (step.rl || 0) < RATE_LIMIT_RETRIES) {
+          // same step again after a minute; the request did not count as done
+          step.rl = (step.rl || 0) + 1;
+          job.attempt = 0;
+          await this.storage.put("job", job);
+          return RATE_LIMIT_PAUSE_MS;
+        }
+        if (e instanceof PlanError) job.planBlocked = true;
         job.warnings.push(`${label}: ${String((e && e.message) || e).slice(0, 300)}`);
         delay = e instanceof ApiError ? this.gap : 200;
       }
@@ -390,7 +400,7 @@ export class Runner {
     const pc = await this.getJ("params:club", null), pn = await this.getJ("params:national", null);
     const meta = {
       generated_at: new Date(now).toISOString(), demo: false, run: { id: job.id, kind: job.kind, steps: job.steps.length },
-      api: { calls: job.apiCalls, remaining_daily: job.remaining },
+      api: { calls: job.apiCalls, remaining_daily: job.remaining, plan_blocked: Boolean(job.planBlocked) },
       analyst: { enabled: Boolean(this.cfg.anthropicKey), model: this.cfg.analystModel, matches_analysed_this_run: job.analysed, usage: job.usage, est_cost_usd: AN.costUsd(job.usage, this.cfg.analystModel) },
       ...(await this.getJ("plan_meta", {})),
       model: {

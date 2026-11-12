@@ -4,6 +4,8 @@ export const API_BASE = "https://v3.football.api-sports.io";
 
 export class ApiError extends Error {}
 export class PlanError extends ApiError {}
+/** Per-minute limit hit: retry the same request after a pause. */
+export class RateLimitError extends ApiError {}
 
 export async function apiGet(key, path, params, fetchImpl = fetch, base = API_BASE) {
   if (!key) throw new ApiError("API_FOOTBALL_KEY is not set");
@@ -29,6 +31,7 @@ export async function apiGet(key, path, params, fetchImpl = fetch, base = API_BA
     const hasErrors = errors && (Array.isArray(errors) ? errors.length : Object.keys(errors).length);
     if (hasErrors) {
       const text = JSON.stringify(errors);
+      if (!Array.isArray(errors) && errors.rateLimit) throw new RateLimitError(`${path}: ${text}`);
       if (!Array.isArray(errors) && (errors.plan || errors.access || errors.requests || errors.token)) throw new PlanError(`${path}: ${text}`);
       throw new ApiError(`${path}: ${text}`);
     }

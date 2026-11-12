@@ -112,6 +112,21 @@ test("manually added fixture far in the future is predicted and shown", async ()
   assert.ok(m.extra && m.tabs.includes("interesting"));
 });
 
+test("rate limit retries the same step; plan block is reported", async () => {
+  const world = makeWorld(NOW);
+  world.limits.rateLimitNext = 2;
+  world.limits.planBlockedSeasons.add(2025);
+  const storage = new FakeStorage();
+  const runner = new Runner(storage, { API_FOOTBALL_KEY: "k", API_FOOTBALL_MAX_CALLS: "400" }, { fetch: world.fetchImpl, now: () => NOW });
+  const delays = [];
+  await runner.start("t");
+  for (let i = 0; i < 1000; i++) { const d = await runner.tick(); if (d === null) break; delays.push(d); }
+  assert.equal(delays.filter((d) => d === 61000).length, 2, "two one-minute pauses");
+  const meta = JSON.parse(await storage.get("out:meta"));
+  assert.ok(!meta.warnings.some((w) => w.includes("rateLimit")), "rate-limited step was not skipped");
+  assert.equal(meta.api.plan_blocked, true);
+});
+
 test("budget guard and failing API do not crash the run", async () => {
   const world = makeWorld(NOW);
   const storage = new FakeStorage();
