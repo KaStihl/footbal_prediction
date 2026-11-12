@@ -83,23 +83,62 @@ export function makeWorld(nowMs, { teamsPerLeague = 20, seed = 7, heavy = false 
     leagues[`5:${k.endsWith(String(curSeason)) ? 2026 : 2024}`] = fx.map((f) => ({ ...f, league: { ...f.league, season: k.endsWith(String(curSeason)) ? 2026 : 2024 } }));
   }
   let remaining = 7400;
-  const limits = { rateLimitNext: 0, planBlockedSeasons: new Set() };
+  const limits = { rateLimitNext: 0, planBlockedSeasons: new Set(), espnDown: new Set(), fdDown: false };
   const calls = [];
-  async function fetchImpl(url) {
+  const SLUG = { "eng.1": 39, "ger.1": 78, "esp.1": 140, "ita.1": 135, "fra.1": 61, "uefa.champions": 2, "uefa.europa": 3, "uefa.nations": 5 };
+  const FD = { PL: 39, BL1: 78, PD: 140, SA: 135, FL1: 61, CL: 2 };
+  const allOf = (league) => Object.entries(leagues).filter(([k]) => k.startsWith(`${league}:`)).flatMap(([, v]) => v);
+  const amer = (dec) => (dec >= 2 ? `+${Math.round((dec - 1) * 100)}` : `-${Math.round(100 / (dec - 1))}`);
+  const reply = (obj, status = 200, headers = {}) => new Response(JSON.stringify(obj), { status, headers });
+
+  function espnEvent(f) {
+    const done = f.fixture.status.short === "FT";
+    const det = details[f.fixture.id];
+    const side = (homeAway, t, g, idx) => {
+      const c = { homeAway, team: { displayName: t.name }, score: String(g ?? 0), statistics: [] };
+      if (done && det) {
+        const st = Object.fromEntries(det.statistics[idx].statistics.map((s) => [s.type, s.value]));
+        c.statistics = [{ name: "totalShots", displayValue: String(st["Total Shots"]) }, { name: "shotsOnTarget", displayValue: String(st["Shots on Goal"]) },
+          { name: "possessionPct", displayValue: String(st["Ball Possession"]).replace("%", "") }];
+      }
+      return c;
+    };
+    const comp = {
+      competitors: [side("home", f.teams.home, f.goals.home, 0), side("away", f.teams.away, f.goals.away, 1)],
+      altGameNote: f.league.id === 5 ? `UEFA Nations League, Group ${"ABCD"[f.fixture.id % 4]}1` : f.league.name,
+      odds: done ? [null] : [{ provider: { name: "FakeBook" }, overUnder: 2.5,
+        moneyline: { home: { close: { odds: amer(2.1) } }, draw: { close: { odds: amer(3.4) } }, away: { close: { odds: amer(3.6) } } } }],
+    };
+    return { id: String(f.fixture.id), date: f.fixture.date, season: { year: f.league.season },
+      status: { type: { completed: done, state: done ? "post" : "pre", name: done ? "STATUS_FULL_TIME" : "STATUS_SCHEDULED" } }, competitions: [comp] };
+  }
+
+  async function fetchImpl(url, init = {}) {
     const u = new URL(url);
-    calls.push(u.pathname + u.search);
-    remaining--;
+    calls.push(u.host + u.pathname + u.search);
     const p = Object.fromEntries(u.searchParams);
-    const hdr = { headers: { "x-ratelimit-requests-remaining": String(remaining) } };
-    if (limits.rateLimitNext > 0) { limits.rateLimitNext--; return new Response(JSON.stringify({ errors: { rateLimit: "Too many requests." }, response: [] }), hdr); }
-    if (p.season && limits.planBlockedSeasons.has(Number(p.season))) return new Response(JSON.stringify({ errors: { plan: "Free plans do not have access to this season" }, response: [] }), hdr);
-    let response = [];
-    if (u.pathname === "/fixtures" && p.id) response = Object.values(leagues).flat().filter((f) => f.fixture.id === Number(p.id));
-    else if (u.pathname === "/fixtures" && p.ids) response = p.ids.split("-").map(Number).filter((i) => details[i]).map((i) => details[i]);
-    else if (u.pathname === "/fixtures") response = leagues[`${p.league}:${p.season}`] || [];
-    else if (u.pathname === "/odds") response = [{ bookmakers: [{ name: "FakeBook", bets: [{ id: 1, values: [{ value: "Home", odd: "2.10" }, { value: "Draw", odd: "3.40" }, { value: "Away", odd: "3.60" }] }] }] }];
-    else if (u.pathname === "/injuries") response = [];
-    return new Response(JSON.stringify({ errors: [], response }), { headers: { "x-ratelimit-requests-remaining": String(remaining) } });
+    if (u.host === "site.api.espn.com") {
+      const slug = u.pathname.split("/")[6];
+      if (limits.espnDown.has(slug)) return reply({ code: 500 }, 500);
+      const league = SLUG[slug];
+      const ym = p.dates;
+      const events = league ? allOf(league).filter((f) => f.fixture.date.slice(0, 7).replace("-", "") === ym).map(espnEvent) : [];
+      return reply({ events });
+    }
+    if (u.host === "api.football-data.org") {
+      if (limits.fdDown) return reply({ message: "down" }, 503);
+      const league = FD[u.pathname.split("/")[3]];
+      const matches = (leagues[`${league}:${p.season}`] || []).map((f) => ({ id: f.fixture.id, utcDate: f.fixture.date,
+        status: f.fixture.status.short === "FT" ? "FINISHED" : "TIMED", matchday: 1,
+        homeTeam: { name: f.teams.home.name }, awayTeam: { name: f.teams.away.name }, score: { fullTime: { home: f.goals.home, away: f.goals.away } } }));
+      return reply({ matches });
+    }
+    remaining--;
+    const hdr = { "x-ratelimit-requests-remaining": String(remaining) };
+    if (limits.rateLimitNext > 0) { limits.rateLimitNext--; return reply({ errors: { rateLimit: "Too many requests." }, response: [] }, 200, hdr); }
+    if (p.season && limits.planBlockedSeasons.has(Number(p.season))) return reply({ errors: { plan: "Free plans do not have access to this season" }, response: [] }, 200, hdr);
+    const response = u.pathname === "/fixtures" ? (leagues[`${p.league}:${p.season}`] || []) : [];
+    return reply({ errors: [], response }, 200, hdr);
   }
   return { fetchImpl, calls, leagues, limits };
 }

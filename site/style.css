@@ -75,3 +75,4 @@ table { width: 100%; border-collapse: collapse; font-size: .88rem; } th, td { te
 .warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border: 1px solid var(--warn); border-radius: var(--radius); padding: 8px 12px; font-size: .84rem; margin: 12px 0; }
 .foot { color: var(--muted); font-size: .8rem; padding-bottom: 40px; }
 @media print { .top, .foot { display: none; } }
+.sources { margin: 12px 0; font-size: .84rem; color: var(--muted); }

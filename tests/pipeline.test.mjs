@@ -64,18 +64,24 @@ test("summaries are proper distributions", () => {
   assert.ok(Math.abs(e.p_home - e.p_away) < 1e-3);
 });
 
-test("end-to-end run with fakes: tabs, analyst clamp, cache, track record", async () => {
+const ESPN_ONLY = { ANTHROPIC_API_KEY: "a", ANALYST_MAX_MATCHES: "100" };
+
+test("ESPN-only run: tabs, stats, odds, analyst clamp, cache, track record", async () => {
   const world = makeWorld(NOW);
   const counter = { n: 0 };
   const storage = new FakeStorage();
-  const env = { API_FOOTBALL_KEY: "k", ANTHROPIC_API_KEY: "a", API_FOOTBALL_MAX_CALLS: "400", STATS_MAX_CALLS: "50", ANALYST_MAX_MATCHES: "100" };
-  const runner = new Runner(storage, env, { fetch: world.fetchImpl, makeClient: () => fakeClaude(counter), now: () => NOW });
+  const runner = new Runner(storage, ESPN_ONLY, { fetch: world.fetchImpl, makeClient: () => fakeClaude(counter), now: () => NOW });
   await runAll(runner);
   const pred = JSON.parse(await storage.get("out:predictions"));
   const meta = JSON.parse(await storage.get("out:meta"));
   const tabs = new Set(pred.matches.flatMap((m) => m.tabs));
   for (const t of ["weekend", "nations_league", "interesting"]) assert.ok(tabs.has(t), `tab ${t}; warnings: ${meta.warnings}`);
   assert.ok(meta.model.converged.club, "club fit converged");
+  assert.match(meta.sources["Premier League"], /ESPN/);
+  assert.ok(pred.matches.some((m) => m.form.home.sot != null), "shots from ESPN statistics");
+  assert.ok(pred.matches.some((m) => m.odds && m.odds.implied), "odds from ESPN");
+  const nl = pred.matches.filter((m) => m.tabs.includes("nations_league"));
+  assert.ok(nl.every((m) => /^Kolo /.test(m.round) && m.group), "NL rounds + groups");
   for (const m of pred.matches) {
     const f = m.final;
     assert.ok(Math.abs(f.p_home + f.p_draw + f.p_away - 1) < 0.01);
@@ -83,71 +89,77 @@ test("end-to-end run with fakes: tabs, analyst clamp, cache, track record", asyn
       assert.equal(m.analyst.xg_mult_home, 1.15); // 1.5 clamped
       assert.equal(m.analyst.absences[0].source_url, ""); // javascript: URL dropped
     }
-    if (m.odds) assert.ok(m.odds.edge);
   }
   assert.ok(pred.matches.some((m) => m.analyst), "some matches analysed");
   assert.ok(meta.analyst.est_cost_usd > 0);
-  const firstCalls = counter.n;
-  // second run: inputs unchanged -> no re-analysis, fixtures cached (ttl)
-  const apiBefore = world.calls.length;
+  const found = await runner.find(pred.matches[0].home.name);
+  assert.ok(found.length > 0 && found[0].fixture_id, "find-fixtures helper");
+  // second run: old months cached, no re-analysis
+  const before = world.calls.length, analysed = counter.n;
   await runAll(runner);
-  const analystCalls = counter.n - firstCalls;
-  assert.equal(analystCalls, 0, "cached analyses reused");
-  assert.equal(world.calls.slice(apiBefore).filter((c) => c.startsWith("/fixtures?league")).length, 0, "fixtures served from storage within ttl");
-  const history = await storage.get("history");
-  assert.ok(Object.keys(history).length > 0);
+  assert.equal(counter.n - analysed, 0, "cached analyses reused");
+  assert.ok(world.calls.length - before < 30, `mostly cached: ${world.calls.length - before} calls`);
+  assert.ok(Object.keys(await storage.get("history") ? JSON.parse(await storage.get("history")) : {}).length > 0);
 });
 
-test("manually added fixture far in the future is predicted and shown", async () => {
+test("ESPN down for a league -> football-data.org fallback", async () => {
   const world = makeWorld(NOW);
-  const future = world.leagues[`39:2026`].filter((f) => Date.parse(f.fixture.date) > NOW + 30 * 864e5)[0];
-  assert.ok(future, "fake has a fixture > 30 days ahead");
+  world.limits.espnDown.add("ger.1");
   const storage = new FakeStorage();
-  const runner = new Runner(storage, { API_FOOTBALL_KEY: "k", API_FOOTBALL_MAX_CALLS: "400", EXTRA_FIXTURE_IDS: String(future.fixture.id) },
-    { fetch: world.fetchImpl, now: () => NOW });
+  const runner = new Runner(storage, { FOOTBALL_DATA_KEY: "fd" }, { fetch: world.fetchImpl, now: () => NOW });
+  await runAll(runner);
+  const meta = JSON.parse(await storage.get("out:meta"));
+  const pred = JSON.parse(await storage.get("out:predictions"));
+  assert.match(meta.sources.Bundesliga, /football-data\.org/);
+  assert.ok(pred.matches.some((m) => m.comp === "bundesliga" && m.tabs.includes("weekend")), "Bundesliga still in weekend tab");
+  assert.ok(world.calls.some((c) => c.startsWith("api.football-data.org/v4/competitions/BL1")));
+});
+
+test("ESPN + football-data down -> API-Football for allowed seasons, warning otherwise", async () => {
+  const world = makeWorld(NOW);
+  world.limits.espnDown.add("uefa.nations");
+  world.limits.rateLimitNext = 1;
+  const storage = new FakeStorage();
+  const runner = new Runner(storage, { API_FOOTBALL_KEY: "k" }, { fetch: world.fetchImpl, now: () => NOW });
+  const delays = [];
+  await runner.start("t");
+  for (let i = 0; i < 2000; i++) { const d = await runner.tick(); if (d === null) break; delays.push(d); }
+  const meta = JSON.parse(await storage.get("out:meta"));
+  assert.match(meta.sources["UEFA Nations League"], /API-Football \(2024\)/);
+  assert.ok(meta.warnings.some((w) => w.includes("UEFA Nations League 2026")), "2026 not available on free plan -> warning");
+  assert.equal(delays.filter((d) => d === 61000).length, 1, "rate limit -> retry after a minute");
+});
+
+test("pinned fixture far in the future is predicted and shown", async () => {
+  const world = makeWorld(NOW);
+  const future = world.leagues["39:2026"].filter((f) => Date.parse(f.fixture.date) > NOW + 30 * 864e5 && Date.parse(f.fixture.date) < NOW + 55 * 864e5)[0];
+  assert.ok(future, "fake has a fixture 30-55 days ahead");
+  const storage = new FakeStorage();
+  const runner = new Runner(storage, { EXTRA_FIXTURE_IDS: String(future.fixture.id) }, { fetch: world.fetchImpl, now: () => NOW });
   await runAll(runner);
   const pred = JSON.parse(await storage.get("out:predictions"));
   const m = pred.matches.find((x) => x.id === future.fixture.id);
-  assert.ok(m, "extra fixture present");
-  assert.ok(m.extra && m.tabs.includes("interesting"));
+  assert.ok(m && m.extra && m.tabs.includes("interesting"));
 });
 
-test("rate limit retries the same step; plan block is reported", async () => {
-  const world = makeWorld(NOW);
-  world.limits.rateLimitNext = 2;
-  world.limits.planBlockedSeasons.add(2025);
-  const storage = new FakeStorage();
-  const runner = new Runner(storage, { API_FOOTBALL_KEY: "k", API_FOOTBALL_MAX_CALLS: "400" }, { fetch: world.fetchImpl, now: () => NOW });
-  const delays = [];
-  await runner.start("t");
-  for (let i = 0; i < 1000; i++) { const d = await runner.tick(); if (d === null) break; delays.push(d); }
-  assert.equal(delays.filter((d) => d === 61000).length, 2, "two one-minute pauses");
-  const meta = JSON.parse(await storage.get("out:meta"));
-  assert.ok(!meta.warnings.some((w) => w.includes("rateLimit")), "rate-limited step was not skipped");
-  assert.equal(meta.api.plan_blocked, true);
-});
-
-test("budget guard and failing API do not crash the run", async () => {
+test("no analyst key -> model only, with a warning", async () => {
   const world = makeWorld(NOW);
   const storage = new FakeStorage();
-  const runner = new Runner(storage, { API_FOOTBALL_KEY: "k", API_FOOTBALL_MAX_CALLS: "3" }, { fetch: world.fetchImpl, now: () => NOW });
+  const runner = new Runner(storage, {}, { fetch: world.fetchImpl, now: () => NOW });
   await runAll(runner);
   const meta = JSON.parse(await storage.get("out:meta"));
-  assert.ok(meta.warnings.some((w) => w.includes("vyčerpaný")));
   assert.ok(meta.warnings.some((w) => w.includes("ANTHROPIC_API_KEY")));
-  assert.ok(world.calls.length <= 3);
+  assert.equal(meta.analyst.enabled, false);
 });
 
 test("CPU per step stays small at realistic data size (free plan ~10 ms)", async () => {
   const world = makeWorld(NOW, { heavy: true });
   const storage = new FakeStorage();
-  const env = { API_FOOTBALL_KEY: "k", ANTHROPIC_API_KEY: "a", API_FOOTBALL_MAX_CALLS: "400", STATS_MAX_CALLS: "8" };
-  const runner = new Runner(storage, env, { fetch: world.fetchImpl, makeClient: () => fakeClaude(), now: () => NOW });
-  await runAll(runner); // warm-up (JIT) + fills caches
+  const runner = new Runner(storage, ESPN_ONLY, { fetch: world.fetchImpl, makeClient: () => fakeClaude(), now: () => NOW });
+  await runAll(runner); // warm-up (JIT) + fills storage
   const cpu = await runAll(runner, { measure: true });
   const worst = {};
   for (const c of cpu) worst[c.step] = Math.max(worst[c.step] || 0, Math.round(c.ms * 10) / 10);
   console.log("max CPU ms per step type:", JSON.stringify(worst));
-  // Node CPU time includes the fakes' JSON serialisation; only guard against regressions here.
   assert.ok(Math.max(...Object.values(worst)) < 60);
 });

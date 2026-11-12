@@ -12,12 +12,13 @@ Cloudflare Worker "footbal-prediction"
  ├─ /api/run, /api/status, /api/find-fixtures
  └─ Cron (05:30 UTC denne, Št–Ne aj 09:15 UTC) ─► Durable Object "Pipeline"
         krok po kroku (alarmy, každý krok pár ms CPU):
-        API-Football: zápasy, štatistiky (xG, strely, držanie lopty), kurzy, zranenia
+        zdroje: ESPN → football-data.org → API-Football (zápasy, výsledky, strely, držanie lopty, kurzy)
         → štatistický model → výber zápasov do záložiek → Claude analytici → zverejnenie
 ```
 
 * **Model** (`src/model.js`): Poissonov model s časovým vážením a zmrštením sily útoku/obrany tímov + Dixon-Coles korekcia nízkych skóre. Kluby a reprezentácie sa fitujú osobitne. Vstupom je zmes gólov a xG (alebo odhadu zo striel na bránu). Fit je inkrementálny, pokračuje z včerajších parametrov.
-* **Analytici** (`src/analyst.js`): na každý zápas jedno volanie Claude s webovým vyhľadávaním (správy klubov, tlačové konferencie, médiá). Vrátia ohraničenú úpravu xG (max ±15 %), absencie **so zdrojom a mierou istoty** a slovenské zdôvodnenie. Pravdepodobnosti prepočíta model. Analytik sa spustí znova len pri vecnej zmene (posun modelu o viac ako 3 p. b., nové zranenia, zmena výkopu) alebo keď je analýza staršia ako 20 h. Na konci kola „hlavný analytik“ napíše prehľad.
+* **Zdroje** (`src/sources.js`): ESPN (bez kľúča) mesiac po mesiaci; ak pre súťaž a sezónu zlyhá, football-data.org (bezplatný kľúč), potom API-Football. Tímy sa medzi zdrojmi párujú podľa normalizovaného názvu.
+* **Analytici** (`src/analyst.js`, predvolene Claude Sonnet 5.5): na každý zápas jedno volanie Claude s webovým vyhľadávaním (správy klubov, tlačové konferencie, médiá). Vrátia ohraničenú úpravu xG (max ±15 %), absencie **so zdrojom a mierou istoty** a slovenské zdôvodnenie. Pravdepodobnosti prepočíta model. Analytik sa spustí znova len pri vecnej zmene (posun modelu o viac ako 3 p. b., nové zranenia, zmena výkopu) alebo keď je analýza staršia ako 20 h. Na konci kola „hlavný analytik“ napíše prehľad.
 * **Track record** (`src/track.js`): tip sa pred výkopom zmrazí a po zápase vyhodnotí (1X2, presné skóre, Brier skóre, porovnanie s trhom).
 
 Nastavenie Workera (secrets, premenné, build) je v [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
@@ -38,9 +39,9 @@ npx wrangler dev                       # lokálne (secrets do .dev.vars, nie je 
 
 ## Náklady a limity
 
-* **API-Football**: rozpočet na beh `API_FOOTBALL_MAX_CALLS` (predvolene 45). Klient sleduje aj skutočný zvyšok denného limitu a pred jeho vyčerpaním zastaví. Rozpisy sa ukladajú (aktuálna sezóna sa obnovuje po 3 h, minulá po 7 dňoch).
+* **Dáta**: ESPN je zadarmo a bez kľúča (neoficiálne rozhranie, ESPN ho môže zmeniť; vtedy nastúpi záložný zdroj). Staré mesiace sa ukladajú (obnova po 14 dňoch), aktuálny a budúce po 3 h.
 * **Anthropic API**: odhad ceny posledného behu je v hlavičke stránky aj v `/data/meta.json` (`analyst.est_cost_usd`). Lacnejšie cez `ANALYST_MODEL`, `ANALYST_EFFORT` a `ANALYST_MAX_MATCHES`.
-* **Cloudflare free plán**: ~10 ms CPU na spustenie. Kroky sú navrhnuté pod týmto limitom. Ak by sa niektorý opakovane preskakoval, je to v upozorneniach a pomôže Workers Paid.
+* **Cloudflare free plán**: ~10 ms CPU na spustenie. Na reálnych dátach trvajú najťažšie kroky (zloženie dát, výber zápasov) 15–45 ms, takže na free pláne sa môžu preskakovať (vidno v upozorneniach). Riešenie: Workers Paid (5 USD/mes., limit 30 s na krok).
 * Keď API nevráti nič, publikované dáta sa neprepíšu prázdnymi.
 
 ## Čo od toho čakať

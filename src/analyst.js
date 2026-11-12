@@ -5,8 +5,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ANALYST_MAX_ADJ } from "./config.js";
 
 export const SYSTEM_PROMPT = `You are a football analyst on a private prediction desk. For one match you receive a JSON \
-dossier: the statistical model's expected goals and probabilities, recent form, head-to-head, league positions, \
-injury data from the API, and bookmaker odds. Your job is to check what the numbers cannot see and decide whether \
+dossier: the statistical model's expected goals and probabilities, recent form (with shots and possession where \
+available), head-to-head, league positions and bookmaker odds. The data feed has no reliable injury information, so \
+team news is entirely up to your research. Your job is to check what the numbers cannot see and decide whether \
 they should be nudged.
 
 How to work:

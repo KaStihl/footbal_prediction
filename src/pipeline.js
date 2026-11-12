@@ -23,6 +23,10 @@ export class Pipeline extends DurableObject {
       if (res.started) await this.ctx.storage.setAlarm(Date.now() + 100);
       return json(res);
     }
+    if (url.pathname === "/find") {
+      const fixtures = await this.runner.find(url.searchParams.get("team") || "");
+      return json({ hint: "fixture_id pridaj do premennej EXTRA_FIXTURE_IDS vo Workeri (čiarkami oddelené); hľadá v načítaných súťažiach", fixtures });
+    }
     if (url.pathname === "/status") {
       const job = await this.ctx.storage.get("job");
       return json(job ? { ...brief(job), last_warnings: job.warnings.slice(-10) } : { job: null });

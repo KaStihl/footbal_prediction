@@ -153,7 +153,7 @@
     const [sh, sa] = f.score.split("-");
     const w = (p) => Math.max(p * 100, 0);
     return `<article class="card" data-id="${e.id}">
-      <div class="meta"><span>${esc(e.competition)}</span>${e.round ? `<span>${esc(e.round)}</span>` : ""}<span class="sp"></span><span>${esc(fmtTime(e.kickoff))}</span></div>
+      <div class="meta"><span>${esc(e.competition)}</span>${e.group ? `<span>${esc(e.group)}</span>` : ""}${e.round ? `<span>${esc(e.round)}</span>` : ""}<span class="sp"></span><span>${esc(fmtTime(e.kickoff))}</span></div>
       <div class="teams">
         <div class="team">${esc(e.home.name)}<small>${esc(rk(e.home))}</small></div>
         <div class="score" aria-label="Tip ${esc(sh)} ku ${esc(sa)}">${esc(sh)} : ${esc(sa)}<small>TIP</small></div>
@@ -273,7 +273,8 @@
     const body = { interesting: renderInteresting, weekend: renderWeekend, nations_league: renderNations, track: renderTrack }[tab]();
     const plan = state.meta.api && state.meta.api.plan_blocked
       ? `<div class="warn-box"><b>API-Football: tvoj plán nemá prístup k aktuálnej sezóne.</b> Bez nej nie sú rozpisy ani výsledky, takže predikcie budú neúplné alebo žiadne. Treba vyšší plán na <a href="https://dashboard.api-football.com" target="_blank" rel="noopener noreferrer">dashboard.api-football.com</a>.</div>` : "";
-    $app.innerHTML = plan + body + (tab === "track" ? "" : warns);
+    const src = state.meta.sources ? `<details class="sources"><summary>Zdroje dát</summary><ul class="plain">${Object.entries(state.meta.sources).map(([k, v]) => `<li>${esc(k)}: ${esc(v)}</li>`).join("")}</ul></details>` : "";
+    $app.innerHTML = plan + body + (tab === "track" ? src : warns + src);
   }
 
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.tab; }));

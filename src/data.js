@@ -1,43 +1,17 @@
 // Normalisation + derived inputs (port of pipeline/data.py), on a compact row format
 // so a whole family of competitions can be loaded within the Workers CPU budget.
 //
-// Fixture row: [id, t(ms), status, homeId, awayId, hg, ag, leagueId, season, round]
+// Fixture row: [id, t(ms), status, homeKey, awayKey, hg, ag, compKey, season, round]  (see sources.js)
 // Stats row:   [xgH, sotH, shotsH, possH, xgA, sotA, shotsA, possA]  (null = unknown)
 
-import { HALF_LIFE_DAYS, NEUTRAL_LEAGUE_IDS, XG_BLEND } from "./config.js";
+import { HALF_LIFE_DAYS, NEUTRAL_COMPETITIONS, XG_BLEND } from "./config.js";
 
 export const F = { ID: 0, T: 1, ST: 2, H: 3, A: 4, HG: 5, AG: 6, LG: 7, SE: 8, R: 9 };
 export const FINISHED = new Set(["FT", "AET", "PEN"]);
 export const UPCOMING = new Set(["NS", "TBD"]);
 
-export function normFixture(fx) {
-  const f = fx.fixture, lg = fx.league, tm = fx.teams, gl = fx.goals || {};
-  return [f.id, Date.parse(f.date), (f.status || {}).short || "NS", tm.home.id, tm.away.id, gl.home ?? null, gl.away ?? null, lg.id, lg.season, lg.round || ""];
-}
-
 export const isFinished = (r) => FINISHED.has(r[F.ST]) && r[F.HG] !== null && r[F.AG] !== null;
-export const isNeutral = (r) => NEUTRAL_LEAGUE_IDS.has(r[F.LG]);
-
-function stat(list, name) {
-  for (const s of list) {
-    if (s.type !== name) continue;
-    let v = s.value;
-    if (typeof v === "string" && v.endsWith("%")) v = v.slice(0, -1);
-    const x = v === null || v === undefined ? NaN : Number(v);
-    return Number.isFinite(x) ? x : null;
-  }
-  return null;
-}
-
-export function extractStats(detail) {
-  let home = null, away = null;
-  for (const block of detail.statistics || []) {
-    const st = block.statistics || [];
-    const v = [stat(st, "expected_goals"), stat(st, "Shots on Goal"), stat(st, "Total Shots"), stat(st, "Ball Possession")];
-    if (block.team.id === detail.teams.home.id) home = v; else away = v;
-  }
-  return home && away ? [...home, ...away] : null;
-}
+export const isNeutral = (r) => NEUTRAL_COMPETITIONS.has(r[F.LG]);
 
 /** Blend real goals with xG (or a shots-on-target proxy) to reduce finishing luck. */
 export function perfGoals(goals, xg, sot, shots) {
