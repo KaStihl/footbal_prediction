@@ -319,8 +319,14 @@ export class Runner {
       }
     }
     cands.sort((a, b) => a.r[F.T] - b.r[F.T]);
-    const w = D.weekendWindow(now, cfgm.TZ);
-    for (const x of cands) if (cfgm.WEEKEND_COMPETITIONS.includes(x.key) && x.r[F.T] >= w.start && x.r[F.T] <= w.end) x.tabs.push("weekend");
+    // weekend round: this (or the coming) weekend; during an international break the next one with PL/BL matches
+    const inWeekend = (x, win) => cfgm.WEEKEND_COMPETITIONS.includes(x.key) && x.r[F.T] >= win.start && x.r[F.T] <= win.end;
+    let w = D.weekendWindow(now, cfgm.TZ);
+    for (let k = 1; k <= 2 && !cands.some((x) => inWeekend(x, w)); k++) {
+      const next = D.weekendWindow(now + k * 7 * 864e5, cfgm.TZ);
+      if (cands.some((x) => inWeekend(x, next))) w = next;
+    }
+    for (const x of cands) if (inWeekend(x, w)) x.tabs.push("weekend");
     // Nations League: matchday windows = clusters of dates (ESPN has no round numbers); next two windows
     const nl = cands.filter((x) => x.key === cfgm.NATIONS_LEAGUE);
     const windows = [];

@@ -225,7 +225,7 @@
     const ms = listOf("weekend");
     const w = state.meta.weekend;
     let html = `<h2>Víkendové kolo ${esc(w.label)} <span class="count">Premier League + Bundesliga</span></h2>`;
-    if (!ms.length) return html + empty("Pre tento víkend zatiaľ nie sú zápasy PL/BL (reprezentačná prestávka alebo kolo ešte nie je v rozpise).");
+    if (!ms.length) return html + empty("V najbližších 3 víkendoch nie sú v rozpise zápasy PL/BL.");
     html += roundSummary("weekend");
     for (const comp of ["premier_league", "bundesliga"]) {
       const c = ms.filter((m) => m.comp === comp);

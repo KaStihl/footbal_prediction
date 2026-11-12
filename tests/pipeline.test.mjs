@@ -142,6 +142,19 @@ test("pinned fixture far in the future is predicted and shown", async () => {
   assert.ok(m && m.extra && m.tabs.includes("interesting"));
 });
 
+test("international break: weekend tab moves to the next weekend with PL/BL matches", async () => {
+  const world = makeWorld(NOW);
+  const fri = Date.UTC(2026, 10, 12, 23), mon = Date.UTC(2026, 10, 16, 5);
+  for (const k of ["39:2026", "78:2026"]) world.leagues[k] = world.leagues[k].filter((f) => { const t = Date.parse(f.fixture.date); return t < fri || t > mon; });
+  const storage = new FakeStorage();
+  const runner = new Runner(storage, {}, { fetch: world.fetchImpl, now: () => NOW });
+  await runAll(runner);
+  const pred = JSON.parse(await storage.get("out:predictions"));
+  const meta = JSON.parse(await storage.get("out:meta"));
+  assert.equal(meta.weekend.label, "20.–22. 11. 2026");
+  assert.ok(pred.matches.some((m) => m.tabs.includes("weekend")));
+});
+
 test("no analyst key -> model only, with a warning", async () => {
   const world = makeWorld(NOW);
   const storage = new FakeStorage();
