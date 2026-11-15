@@ -24,6 +24,7 @@ Všetko beží v jednom Workeri, ktorý je napojený na tento repozitár (Worker
 | `API_FOOTBALL_MAX_CALLS` | `45` | volaní API-Football na beh (free plán: 100/deň) |
 | `API_FOOTBALL_MAX_SEASON` | `2024` | najnovšia sezóna, ktorú tvoj plán API-Football vydá (platený plán: napr. `2030`) |
 | `ANALYST_ALLOWED_DOMAINS` | – | obmedzí webové vyhľadávanie analytika na tieto domény |
+| `ANALYST_PREFERRED_SOURCES` | uefa.com, footballwebpages.co.uk, nbcsports.com, … | weby, ktoré analytik prezrie ako prvé (čiarkami oddelené; prepíše predvolený zoznam v `src/config.js`) |
 
 Premenné pridané v dashboarde môže ďalší deploy z repa prepísať, iba ak sú definované aj vo `wrangler.jsonc` (tam nie sú, takže ostanú). Secrets ostávajú vždy.
 

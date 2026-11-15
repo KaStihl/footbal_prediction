@@ -176,3 +176,16 @@ test("CPU per step stays small at realistic data size (free plan ~10 ms)", async
   console.log("max CPU ms per step type:", JSON.stringify(worst));
   assert.ok(Math.max(...Object.values(worst)) < 60);
 });
+
+test("analyst system prompt lists the preferred sources (configurable)", async () => {
+  const { settings } = await import("../src/config.js");
+  const AN = await import("../src/analyst.js");
+  const seen = [];
+  const client = { beta: { messages: { create: async (p) => { seen.push(p.system[0].text); return { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ xg_mult_home: 1, xg_mult_away: 1, summary: "", key_factors: [], absences: [], lineups_confirmed: false, data_gaps: [] }) }] }; } } } };
+  await AN.analyseMatch(client, {}, settings({}), { match: {} }, "2026-11-15");
+  assert.match(seen[0], /uefa\.com/);
+  assert.match(seen[0], /footballwebpages\.co\.uk/);
+  assert.doesNotMatch(seen[0], /notjustok|krisyotam/);
+  await AN.analyseMatch(client, {}, settings({ ANALYST_PREFERRED_SOURCES: "example.org" }), { match: {} }, "2026-11-15");
+  assert.match(seen[1], /example\.org/);
+});

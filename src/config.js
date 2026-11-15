@@ -72,6 +72,22 @@ export const DERBIES = [
   ["Juventus", "Inter"], ["Paris Saint Germain", "Marseille"],
 ];
 
+// Analyst research sources, checked first (chosen by the user; reading pages via web search, no scraping).
+export const PREFERRED_SOURCES = [
+  "uefa.com",                    // official: Nations League, Champions League, Europa League news and line-ups
+  "footballwebpages.co.uk",      // team news, injuries, suspensions (English football)
+  "nbcsports.com",               // Premier League news and injury reports
+  "tntsports.co.uk",             // UK football news
+  "90min.com",                   // team news, predicted line-ups
+  "eurosport.nl",                // European football news
+  "fotmob.com",                  // line-ups, injuries, xG, player ratings
+  "fbref.com",                   // advanced stats (xG, shots, player form)
+  "national-football-teams.com", // national team records and squads
+  "futbol24.com",                // results, form
+  "livesoccertv.com",            // kick-off times, schedules
+  "gol.com",
+];
+
 // Runtime knobs: Worker variables / secrets (env). Empty strings fall back to defaults.
 export function settings(env = {}) {
   const int = (k, d) => {
@@ -95,6 +111,8 @@ export function settings(env = {}) {
     analystWindowHours: int("ANALYST_WINDOW_HOURS", 96),
     analystMaxAgeHours: int("ANALYST_MAX_AGE_HOURS", 20),
     analystAllowedDomains: str("ANALYST_ALLOWED_DOMAINS", "").split(",").map((d) => d.trim()).filter(Boolean),
+    // sites the analyst checks first (it may still use others, e.g. official club websites)
+    analystPreferredSources: str("ANALYST_PREFERRED_SOURCES", PREFERRED_SOURCES.join(",")).split(",").map((d) => d.trim()).filter(Boolean),
     // manually pinned matches: fixture ids from /api/find-fixtures, comma separated (shown in "Zaujímavé")
     extraFixtureIds: str("EXTRA_FIXTURE_IDS", "").split(",").map((x) => parseInt(x, 10)).filter(Number.isFinite).slice(0, 20),
   };
