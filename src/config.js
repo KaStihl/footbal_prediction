@@ -52,11 +52,14 @@ export const NEUTRAL_COMPETITIONS = new Set(["euro", "world_cup"]);
 export const WEEKEND_COMPETITIONS = ["premier_league", "bundesliga"];
 export const NATIONS_LEAGUE = "nations_league";
 
-export const HALF_LIFE_DAYS = { club: 200, national: 400 };
-export const RIDGE = 3.0;
+// Tuned by a walk-forward backtest on ESPN data (Nov 2026): club 611 matches, national 540 matches;
+// log-loss club 0.958 -> 0.9545, national 0.952 -> 0.925 (league-average baseline ~1.05).
+export const HALF_LIFE_DAYS = { club: 450, national: 1000 };
+export const RIDGE = 1.0;
+export const RIDGE_BY_FAMILY = { club: 1.0, national: 0.3 };
 export const DC_RHO = -0.08;
 export const MAX_GOALS = 8;
-export const XG_BLEND = 0.5;
+export const XG_BLEND = 0.4; // weight of real goals vs the shots-based proxy
 export const ANALYST_MAX_ADJ = 0.15;
 
 export const FIXTURE_WINDOW_DAYS = 14;
@@ -106,6 +109,8 @@ export function settings(env = {}) {
     espnMaxCalls: int("ESPN_MAX_CALLS", 400),
     anthropicKey: env.ANTHROPIC_API_KEY || "",
     analystModel: str("ANALYST_MODEL", "claude-sonnet-5-5"),
+    // weight of the statistical model when bookmaker odds exist (rest = market); 1 = model only
+    modelWeight: Math.min(Math.max(parseFloat(env.MODEL_WEIGHT) || 0.35, 0), 1),
     analystEffort: str("ANALYST_EFFORT", "medium"),
     analystMaxMatches: int("ANALYST_MAX_MATCHES", 16),
     analystWindowHours: int("ANALYST_WINDOW_HOURS", 96),

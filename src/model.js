@@ -178,13 +178,19 @@ export function summarize(lh, la, nMin = 10) {
   }
   cells.sort((a, b) => b[0] - a[0]);
   const maxp = Math.max(ph, pd, pa);
+  const pick = ph >= Math.max(pd, pa) ? "1" : pd >= pa ? "X" : "2";
+  // The score tip must agree with the most likely outcome: the most likely scoreline
+  // *within* that outcome (the overall modal score is often 1-1 even with a clear favourite).
+  const inPick = (i, j) => (pick === "1" ? i > j : pick === "X" ? i === j : i < j);
+  const best = cells.find(([, i, j]) => inPick(i, j));
   const confidence = nMin < 4 || maxp < 0.42 ? "low" : maxp >= 0.6 && nMin >= 8 ? "high" : "medium";
   return {
     xg_home: Math.round(lh * 1000) / 1000, xg_away: Math.round(la * 1000) / 1000,
     p_home: r4(ph), p_draw: r4(pd), p_away: r4(pa), p_over25: r4(over), p_btts: r4(btts),
-    score: `${cells[0][1]}-${cells[0][2]}`,
+    score: `${best[1]}-${best[2]}`,
+    score_mode: `${cells[0][1]}-${cells[0][2]}`,
     top_scores: cells.slice(0, 3).map(([v, i, j]) => ({ score: `${i}-${j}`, p: r4(v) })),
-    pick: ph >= Math.max(pd, pa) ? "1" : pd >= pa ? "X" : "2",
+    pick,
     confidence,
   };
 }
@@ -193,6 +199,56 @@ export function predict(p, home, away, comp, neutral = false) {
   const [lh, la] = lambdas(p, home, away, comp, neutral);
   const nh = p.nEff[home] || 0, na = p.nEff[away] || 0;
   return { ...summarize(lh, la, Math.min(nh, na)), n_eff_home: Math.round(nh * 10) / 10, n_eff_away: Math.round(na * 10) / 10 };
+}
+
+/** 1X2 probabilities of a pair of expected goals (allocation-free version of scoreMatrix). */
+export function outcomeProbs(lh, la, rho = DC_RHO, kmax = MAX_GOALS) {
+  const ph = new Float64Array(kmax + 1), pa = new Float64Array(kmax + 1);
+  ph[0] = Math.exp(-lh); pa[0] = Math.exp(-la);
+  for (let k = 1; k <= kmax; k++) { ph[k] = (ph[k - 1] * lh) / k; pa[k] = (pa[k - 1] * la) / k; }
+  let h = 0, d = 0, a = 0;
+  for (let i = 0; i <= kmax; i++) {
+    for (let j = 0; j <= kmax; j++) {
+      let v = ph[i] * pa[j];
+      if (i < 2 && j < 2) v *= Math.max(tau(i, j, lh, la, rho), 0);
+      if (i > j) h += v; else if (i === j) d += v; else a += v;
+    }
+  }
+  const s = h + d + a;
+  return [h / s, d / s, a / s];
+}
+
+/** Expected goals whose scoreline distribution reproduces the target 1X2 probabilities
+ *  (Newton's method on log-lambdas, starting from the model's own values). */
+export function fitToProbs(target, lh0, la0) {
+  let x = Math.log(Math.max(lh0, 0.05)), y = Math.log(Math.max(la0, 0.05));
+  const res = (x0, y0) => { const p = outcomeProbs(Math.exp(x0), Math.exp(y0)); return [p[0] - target[0], p[2] - target[2]]; };
+  const eps = 1e-4;
+  for (let it = 0; it < 30; it++) {
+    const r = res(x, y);
+    if (Math.abs(r[0]) + Math.abs(r[1]) < 1e-6) break;
+    const rx = res(x + eps, y), ry = res(x, y + eps);
+    const j11 = (rx[0] - r[0]) / eps, j12 = (ry[0] - r[0]) / eps, j21 = (rx[1] - r[1]) / eps, j22 = (ry[1] - r[1]) / eps;
+    const det = j11 * j22 - j12 * j21;
+    if (Math.abs(det) < 1e-12) break;
+    let dx = (-r[0] * j22 + r[1] * j12) / det, dy = (-j11 * r[1] + j21 * r[0]) / det;
+    const n = Math.hypot(dx, dy);
+    if (n > 0.5) { dx *= 0.5 / n; dy *= 0.5 / n; }
+    x = Math.min(Math.max(x + dx, -3), 2); y = Math.min(Math.max(y + dy, -3), 2);
+  }
+  return [Math.exp(x), Math.exp(y)];
+}
+
+/** Combine the model with the bookmaker market: weighted 1X2, then matching expected goals. */
+export function blendWithMarket(pred, implied, modelWeight) {
+  const w = Math.min(Math.max(modelWeight, 0), 1);
+  const target = [
+    w * pred.p_home + (1 - w) * implied.home,
+    w * pred.p_draw + (1 - w) * implied.draw,
+    w * pred.p_away + (1 - w) * implied.away,
+  ];
+  const [lh, la] = fitToProbs(target, pred.xg_home, pred.xg_away);
+  return { ...summarize(lh, la, Math.min(pred.n_eff_home ?? 10, pred.n_eff_away ?? 10)), n_eff_home: pred.n_eff_home, n_eff_away: pred.n_eff_away };
 }
 
 export function impliedProbs(oh, od, oa) {

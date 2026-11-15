@@ -117,7 +117,7 @@
       html += `<p>${esc(a.summary)}</p>`;
       const dh = a.xg_mult_home, da = a.xg_mult_away;
       if (Math.abs(dh - 1) > 0.004 || Math.abs(da - 1) > 0.004) {
-        html += `<p class="muted">Úprava analytika: xG domáci ×${dh.toFixed(2)}, hostia ×${da.toFixed(2)} (model samotný: ${e.model.score}, ${pct(e.model.p_home)}/${pct(e.model.p_draw)}/${pct(e.model.p_away)}).</p>`;
+        html += `<p class="muted">Úprava analytika: xG domáci ×${dh.toFixed(2)}, hostia ×${da.toFixed(2)}.</p>`;
       }
       if (a.key_factors.length) {
         html += `<h4>Kľúčové faktory</h4><ul class="plain">${a.key_factors.map((k) => `<li><b>${esc(k.factor)}</b> <span class="muted">(${k.favours === "home" ? "domáci" : k.favours === "away" ? "hostia" : "neutrálne"})</span>: ${esc(k.detail)}</li>`).join("")}</ul>`;
@@ -137,6 +137,11 @@
     if (inj.length && !(a && a.absences.some((x) => x.source_type === "api_football"))) {
       html += `<h4>Zranenia podľa API-Football</h4><ul class="plain">${inj.map((i) => `<li>${esc(i.player)} <span class="muted">(${esc(i.reason || i.type || "")})</span></li>`).join("")}</ul>`;
     }
+    const p3 = (x) => `${pct(x.p_home)} / ${pct(x.p_draw)} / ${pct(x.p_away)}`;
+    html += `<h4>Ako vznikol tip</h4><ul class="plain"><li>Štatistický model: ${p3(e.model)} (xG ${e.model.xg_home.toFixed(2)} : ${e.model.xg_away.toFixed(2)})</li>`;
+    if (e.blend) html += `<li>Trh (kurzy bez marže): ${pct(e.blend.market.home)} / ${pct(e.blend.market.draw)} / ${pct(e.blend.market.away)}</li><li>Kombinácia ${Math.round(e.blend.model_weight * 100)} % model + ${Math.round((1 - e.blend.model_weight) * 100)} % trh: ${p3(e.base)}</li>`;
+    if (a) html += `<li>Po úprave analytika: ${p3(e.final)}</li>`;
+    html += `<li>Tip na skóre = najpravdepodobnejší výsledok v rámci najpravdepodobnejšieho 1/X/2 (${esc(e.final.pick)}).</li></ul>`;
     const f = e.form, h = e.h2h;
     html += `<div class="grid2"><div><h4>${esc(e.home.name)}: forma</h4>${formChips(f.home)}<div class="muted">${esc(teamStats(f.home))}</div></div>
       <div><h4>${esc(e.away.name)}: forma</h4>${formChips(f.away)}<div class="muted">${esc(teamStats(f.away))}</div></div></div>`;
@@ -170,7 +175,7 @@
         <span class="chip">Oba skórujú: ${pct(f.p_btts)}</span>
         <span class="chip">Ďalšie skóre: ${f.top_scores.slice(1).map((s) => esc(s.score) + " (" + pct(s.p) + ")").join(", ")}</span>
         <span class="chip ${f.confidence}">${conf}</span>
-        ${e.analyst ? '<span class="chip">model + analytik</span>' : '<span class="chip">len model</span>'}
+        <span class="chip">${["model", e.blend ? "trh" : "", e.analyst ? "analytik" : ""].filter(Boolean).join(" + ")}</span>
         ${e.extra ? '<span class="chip">ručne pridaný</span>' : ""}
       </div>
       ${oddsBlock(e)}

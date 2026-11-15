@@ -17,6 +17,9 @@ Cloudflare Worker "footbal-prediction"
 ```
 
 * **Model** (`src/model.js`): Poissonov model s časovým vážením a zmrštením sily útoku/obrany tímov + Dixon-Coles korekcia nízkych skóre. Kluby a reprezentácie sa fitujú osobitne. Vstupom je zmes gólov a xG (alebo odhadu zo striel na bránu). Fit je inkrementálny, pokračuje z včerajších parametrov.
+* **Kombinácia s trhom**: keď sú k zápasu kurzy, výsledné pravdepodobnosti sú 35 % model + 65 % trh (bookmakerské kurzy bez marže; premenná `MODEL_WEIGHT`). Z nich sa dopočítajú xG a skóre.
+* **Tip na skóre** je najpravdepodobnejší výsledok v rámci najpravdepodobnejšieho 1/X/2, takže nikdy neprotirečí favoritovi (predtým bol v ~73 % prípadov remízový, lebo 1:1 je často najčastejšie jednotlivé skóre).
+* **Parametre modelu** sú nastavené spätným testom (týždeň po týždni, vždy len na starších dátach): kluby 611 zápasov, log-loss 0,955, trafený 1X2 56 %, presné skóre 12 %; reprezentácie 540 zápasov, log-loss 0,925, 1X2 58 % (len frekvencie výsledkov: ~1,05).
 * **Zdroje** (`src/sources.js`): ESPN (bez kľúča) mesiac po mesiaci; ak pre súťaž a sezónu zlyhá, football-data.org (bezplatný kľúč), potom API-Football. Tímy sa medzi zdrojmi párujú podľa normalizovaného názvu.
 * **Analytici** (`src/analyst.js`, predvolene Claude Sonnet 5.5): na každý zápas jedno volanie Claude s webovým vyhľadávaním (správy klubov, tlačové konferencie, médiá). Vrátia ohraničenú úpravu xG (max ±15 %), absencie **so zdrojom a mierou istoty** a slovenské zdôvodnenie. Pravdepodobnosti prepočíta model. Analytik sa spustí znova len pri vecnej zmene (posun modelu o viac ako 3 p. b., nové zranenia, zmena výkopu) alebo keď je analýza staršia ako 20 h. Na konci kola „hlavný analytik“ napíše prehľad.
 * **Track record** (`src/track.js`): tip sa pred výkopom zmrazí a po zápase vyhodnotí (1X2, presné skóre, Brier skóre, porovnanie s trhom).

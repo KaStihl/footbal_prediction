@@ -19,7 +19,7 @@ const MAX_ATTEMPTS = 2;
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_PAUSE_MS = 61_000;
 const FIT_SWEEPS = 6;
-const MAX_FIT_STEPS = 40;
+const MAX_FIT_STEPS = 80;
 const STALE_MS = 40 * 3600e3;  // analysis older than this is flagged in the UI
 const REANALYSE_DP = 0.03;     // re-run the analyst when the model moved by > 3 p.p.
 const ESPN_GAP_MS = 400;       // be polite to the public endpoint
@@ -276,7 +276,7 @@ export class Runner {
   async step_fit(step) {
     const rows = await this.getJ(`rows:${step.fam}`, []);
     const p = await this.getJ(`params:${step.fam}`, null) || M.initParams(rows);
-    M.fitSweeps(rows, p, { maxSweeps: FIT_SWEEPS });
+    M.fitSweeps(rows, p, { maxSweeps: FIT_SWEEPS, ridge: cfgm.RIDGE_BY_FAMILY[step.fam] ?? cfgm.RIDGE, tol: 3e-4 });
     await this.putJ(`params:${step.fam}`, p);
     if (!p.converged && step.n + 1 < MAX_FIT_STEPS) return { insert: [{ t: "fit", fam: step.fam, n: step.n + 1 }] };
   }
@@ -372,7 +372,7 @@ export class Runner {
           kickoff: new Date(r[F.T]).toISOString(), status: r[F.ST], season: r[F.SE],
           home: { id: r[F.H], name: d.names[r[F.H]] || r[F.H], table: th },
           away: { id: r[F.A], name: d.names[r[F.A]] || r[F.A], table: ta },
-          neutral: D.isNeutral(r), model: pred, final: pred, analyst: null, odds: oddsOf(d.odds[r[F.ID]]), injuries: [],
+          neutral: D.isNeutral(r), model: pred, ...baseOf(pred, oddsOf(d.odds[r[F.ID]]), this.cfg.modelWeight), analyst: null, injuries: [],
           form: { home: D.teamForm(r[F.H], idx, d.stats, d.names, compNames, r[F.T]), away: D.teamForm(r[F.A], idx, d.stats, d.names, compNames, r[F.T]) },
           h2h: D.headToHead(r[F.H], r[F.A], idx, d.names, r[F.T]), interest: it, tabs,
         });
@@ -503,6 +503,13 @@ function interest(r, names, pred, table, comp) {
   return Math.round(s * 1000) / 1000;
 }
 
+/** Prediction before the analyst: the model, or the model blended with the market when odds exist. */
+export function baseOf(pred, odds, modelWeight) {
+  if (!odds) return { odds: null, base: pred, final: pred, blend: null };
+  const base = M.blendWithMarket(pred, odds.implied, modelWeight);
+  return { odds, base, final: base, blend: { model_weight: modelWeight, market: odds.implied } };
+}
+
 /** Bookmaker odds (decimal) -> object with margin-free implied probabilities. */
 export function oddsOf(o) {
   if (!o || !o.home || !o.draw || !o.away) return null;
@@ -537,8 +544,9 @@ export function applyAnalysis(entries, state, now) {
   for (const e of entries) {
     const a = state.matches[e.id];
     if (!a || Date.parse(e.kickoff) < now) continue;
+    const base = e.base || e.model;
     const nMin = Math.min(e.model.n_eff_home, e.model.n_eff_away);
-    e.final = { ...M.summarize(e.model.xg_home * a.xg_mult_home, e.model.xg_away * a.xg_mult_away, nMin), n_eff_home: e.model.n_eff_home, n_eff_away: e.model.n_eff_away };
+    e.final = { ...M.summarize(base.xg_home * a.xg_mult_home, base.xg_away * a.xg_mult_away, nMin), n_eff_home: e.model.n_eff_home, n_eff_away: e.model.n_eff_away };
     const { basis: _b, ...rest } = a;
     e.analyst = { ...rest, stale: now - Date.parse(a.updated_at) > STALE_MS };
   }

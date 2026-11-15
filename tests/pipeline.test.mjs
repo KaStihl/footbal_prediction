@@ -189,3 +189,18 @@ test("analyst system prompt lists the preferred sources (configurable)", async (
   await AN.analyseMatch(client, {}, settings({ ANALYST_PREFERRED_SOURCES: "example.org" }), { match: {} }, "2026-11-15");
   assert.match(seen[1], /example\.org/);
 });
+
+test("score tip agrees with the most likely outcome; market blend reproduces target probabilities", () => {
+  const s = M.summarize(1.1, 1.45); // away favourite, overall modal score is 1-1
+  assert.equal(s.pick, "2");
+  const [h, a] = s.score.split("-").map(Number);
+  assert.ok(a > h, `tip ${s.score} must be an away win`);
+  const target = [0.24, 0.26, 0.5];
+  const [lh, la] = M.fitToProbs(target, 1.3, 1.3);
+  const p = M.outcomeProbs(lh, la);
+  for (let k = 0; k < 3; k++) assert.ok(Math.abs(p[k] - target[k]) < 0.01, `${p} vs ${target}`);
+  const pred = { ...M.summarize(1.6, 1.0), n_eff_home: 20, n_eff_away: 20 };
+  const b = M.blendWithMarket(pred, { home: 0.3, draw: 0.3, away: 0.4 }, 0.35);
+  const want = 0.35 * pred.p_home + 0.65 * 0.3;
+  assert.ok(Math.abs(b.p_home - want) < 0.01, `${b.p_home} vs ${want}`);
+});
