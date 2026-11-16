@@ -19,7 +19,7 @@ Všetko beží v jednom Workeri, ktorý je napojený na tento repozitár (Worker
 |---|---|---|
 | `EXTRA_FIXTURE_IDS` | – | pripnuté zápasy, ID oddelené čiarkou (zistíš cez `/api/find-fixtures?team=Názov`) |
 | `ANALYST_MODEL` | `claude-sonnet-5-5` | presnejší a drahší `claude-opus-5-5` |
-| `ANALYST_EFFORT` | `medium` | `low` / `medium` / `high` |
+| `ANALYST_EFFORT` | `high` | `low` / `medium` / `high` (nižšie = lacnejšie, ale menej dôkladné hľadanie správ) |
 | `ANALYST_MAX_MATCHES` | `16` | max. počet analýz na jeden beh |
 | `API_FOOTBALL_MAX_CALLS` | `45` | volaní API-Football na beh (free plán: 100/deň) |
 | `API_FOOTBALL_MAX_SEASON` | `2024` | najnovšia sezóna, ktorú tvoj plán API-Football vydá (platený plán: napr. `2030`) |

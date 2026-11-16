@@ -21,6 +21,7 @@ const RATE_LIMIT_PAUSE_MS = 61_000;
 const FIT_SWEEPS = 6;
 const MAX_FIT_STEPS = 80;
 const STALE_MS = 40 * 3600e3;  // analysis older than this is flagged in the UI
+const ANALYSIS_VERSION = 2;     // bump to re-run all analyses after analyst changes
 const REANALYSE_DP = 0.03;     // re-run the analyst when the model moved by > 3 p.p.
 const ESPN_GAP_MS = 400;       // be polite to the public endpoint
 const FD_GAP_MS = 6500;        // football-data.org free: 10 requests / minute
@@ -41,6 +42,7 @@ export function initialSteps(now) {
   for (const [key, c] of Object.entries(cfgm.competitions(new Date(now)))) {
     if (c.espn) for (const ym of cfgm.espnMonths(c, now)) steps.push({ t: "espn", comp: key, ym });
   }
+  for (const [key, c] of Object.entries(cfgm.competitions(new Date(now)))) if (c.espn && c.watch) steps.push({ t: "news", comp: key });
   steps.push({ t: "fallback" });
   for (const fam of ["club", "national"]) steps.push({ t: "merge", fam }, { t: "rows", fam }, { t: "fit", fam, n: 0 });
   steps.push({ t: "plan" }, { t: "entries" }, { t: "analyst_plan" }, { t: "publish" });
@@ -195,6 +197,17 @@ export class Runner {
     const counts = await this.getJ("espn_counts", {});
     (counts[step.comp] ||= {})[step.ym] = d.rows.length;
     await this.putJ("espn_counts", counts);
+    return { delay: ESPN_GAP_MS };
+  }
+
+  async step_news(step, job) {
+    const at = await this.storage.get(`news:${step.comp}:at`);
+    if (at && this.now() - at < 3 * 3600e3) return { delay: 10 };
+    const comp = cfgm.competitions(new Date(this.now()))[step.comp];
+    job.espnCalls++;
+    const items = await S.fetchEspnNews(this.fetch, comp.espn);
+    await this.putJ(`news:${step.comp}`, items);
+    await this.storage.put(`news:${step.comp}:at`, this.now());
     return { delay: ESPN_GAP_MS };
   }
 
@@ -363,6 +376,8 @@ export class Runner {
     const compNames = Object.fromEntries(Object.entries(comps).map(([k, c]) => [k, c.name]));
     const shown = await this.getJ("shown", []);
     const out = [];
+    const news = {};
+    for (const comp of new Set(shown.map((x) => x.comp))) news[comp] = await this.getJ(`news:${comp}`, []);
     for (const fam of [...new Set(shown.map((x) => x.fam))]) {
       const d = await this.loadData(fam, { stats: true, odds: true });
       const idx = D.teamIndex(d.rows);
@@ -375,6 +390,7 @@ export class Runner {
           neutral: D.isNeutral(r), model: pred, ...baseOf(pred, oddsOf(d.odds[r[F.ID]]), this.cfg.modelWeight), analyst: null, injuries: [],
           form: { home: D.teamForm(r[F.H], idx, d.stats, d.names, compNames, r[F.T]), away: D.teamForm(r[F.A], idx, d.stats, d.names, compNames, r[F.T]) },
           h2h: D.headToHead(r[F.H], r[F.A], idx, d.names, r[F.T]), interest: it, tabs,
+          news: relevantNews(news[comp] || [], [d.names[r[F.H]] || r[F.H], d.names[r[F.A]] || r[F.A]], this.now()),
         });
       }
     }
@@ -417,7 +433,7 @@ export class Runner {
     const client = this.makeClient(this.cfg.anthropicKey);
     const res = await AN.analyseMatch(client, job.usage, this.cfg, dossier(e), new Date(this.now()).toISOString().slice(0, 10));
     const state = await this.getJ("analysis", { matches: {}, rounds: {} });
-    state.matches[step.id] = { ...res, basis: analysisBasis(e), updated_at: new Date(this.now()).toISOString() };
+    state.matches[step.id] = { ...res, basis: analysisBasis(e), v: ANALYSIS_VERSION, updated_at: new Date(this.now()).toISOString() };
     await this.putJ("analysis", state);
     job.analysed++;
   }
@@ -503,6 +519,14 @@ function interest(r, names, pred, table, comp) {
   return Math.round(s * 1000) / 1000;
 }
 
+/** Up to 8 recent competition headlines, those naming one of the teams first. */
+export function relevantNews(items, teamNames, now) {
+  const recent = items.filter((a) => !a.published || now - Date.parse(a.published) < 10 * 864e5);
+  const words = teamNames.flatMap((n) => String(n).toLowerCase().split(/\s+/).filter((w) => w.length > 3 && !["united", "city", "real", "club"].includes(w)));
+  const hit = (a) => words.some((w) => `${a.headline} ${a.description}`.toLowerCase().includes(w));
+  return [...recent.filter(hit), ...recent.filter((a) => !hit(a))].slice(0, 8).map(({ headline, description, published }) => ({ headline, description, published }));
+}
+
 /** Prediction before the analyst: the model, or the model blended with the market when odds exist. */
 export function baseOf(pred, odds, modelWeight) {
   if (!odds) return { odds: null, base: pred, final: pred, blend: null };
@@ -523,7 +547,7 @@ export function dossier(e) {
     match: { id: e.id, competition: e.competition, round: e.round, kickoff_utc: e.kickoff, home: e.home.name, away: e.away.name, neutral_venue: e.neutral },
     league_position: { home: e.home.table, away: e.away.table },
     model: pick(e.model, ["xg_home", "xg_away", "p_home", "p_draw", "p_away", "p_over25", "p_btts", "score", "confidence"]),
-    form_last5: e.form, head_to_head: e.h2h, injuries_from_data_feed: e.injuries,
+    form_last5: e.form, head_to_head: e.h2h, competition_headlines: e.news || [],
     bookmaker_odds: e.odds ? pick(e.odds, ["bookmaker", "home", "draw", "away", "implied"]) : null,
   };
 }
@@ -534,7 +558,7 @@ export function analysisBasis(e) {
 }
 
 export function needsAnalysis(cur, basis, now, maxAgeMs) {
-  if (!cur || !cur.basis) return true;
+  if (!cur || !cur.basis || cur.v !== ANALYSIS_VERSION) return true;
   if (now - Date.parse(cur.updated_at) >= maxAgeMs) return true;
   if (cur.basis.inj !== basis.inj || cur.basis.kickoff !== basis.kickoff) return true;
   return cur.basis.p.some((v, i) => Math.abs(v - basis.p[i]) > REANALYSE_DP);

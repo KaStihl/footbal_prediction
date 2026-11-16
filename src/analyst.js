@@ -6,15 +6,20 @@ import { ANALYST_MAX_ADJ } from "./config.js";
 
 export const SYSTEM_PROMPT = `You are a football analyst on a private prediction desk. For one match you receive a JSON \
 dossier: the statistical model's expected goals and probabilities, recent form (with shots and possession where \
-available), head-to-head, league positions and bookmaker odds. The data feed has no reliable injury information, so \
-team news is entirely up to your research. Your job is to check what the numbers cannot see and decide whether \
-they should be nudged.
+available), head-to-head, league positions, bookmaker odds and recent competition headlines. The data feed has no \
+injury or line-up information, so team news is entirely up to your research - it is the main reason you exist. \
+Your job is to check what the numbers cannot see and decide whether they should be nudged.
 
 How to work:
-1. Use web search to find current team news for BOTH teams: injuries, suspensions, doubtful players, returning \
-players, expected line-ups, rotation (congested schedule, cup or international duty), manager changes, motivation. \
-Prefer official club websites and official league/federation sites and press conferences; then established \
-sports media. Search at most as much as needed.
+1. Research team news for BOTH teams before writing anything. For each team, at least:
+   - "<team> team news injuries" and "<team> suspended" (add the match date or opponent to get the current article),
+   - "<team> predicted line-up" / "<team> confirmed line-up" close to kick-off,
+   - "<manager> press conference" (pre-match press conferences usually name absentees),
+   - for national teams: "<country> squad withdrawals" / "<country> called up replacement" for this international window.
+   Open the most relevant articles with web_fetch and read them - search snippets alone are often not enough.
+   Prefer official club and federation websites, press conferences and the preferred sources listed below; then \
+established sports media. Note rotation (congested schedule, cup or international duty), manager changes and \
+anything in the dossier's competition headlines that concerns these teams.
 2. Never invent facts. Every absence you report must come from the dossier or a page you actually read, with its \
 URL in source_url. If you could not find reliable information, say so in data_gaps and keep the multipliers at 1.0.
 3. xg_mult_home / xg_mult_away multiply the model's expected goals (1.00 = no change). Move them only for concrete \
@@ -73,6 +78,7 @@ export function addUsage(acc, u) {
   acc.cache_read_tokens = (acc.cache_read_tokens || 0) + (u.cache_read_input_tokens || 0);
   acc.cache_write_tokens = (acc.cache_write_tokens || 0) + (u.cache_creation_input_tokens || 0);
   acc.web_searches = (acc.web_searches || 0) + ((u.server_tool_use && u.server_tool_use.web_search_requests) || 0);
+  acc.web_fetches = (acc.web_fetches || 0) + ((u.server_tool_use && u.server_tool_use.web_fetch_requests) || 0);
   return acc;
 }
 
@@ -117,7 +123,7 @@ export async function callJson(client, usage, { model, effort, system, user, sch
     output_config: { effort, format: { type: "json_schema", schema } },
     ...(tools ? { tools } : {}),
   };
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     const resp = await create(client, { ...params, messages });
     addUsage(usage, resp.usage);
     if (resp.stop_reason === "pause_turn") {
@@ -161,7 +167,14 @@ export function sanitize(raw) {
 }
 
 export function webSearchTool(allowedDomains) {
-  const t = { type: "web_search_20260209", name: "web_search", max_uses: 8 };
+  const t = { type: "web_search_20260209", name: "web_search", max_uses: 12 };
+  if (allowedDomains && allowedDomains.length) t.allowed_domains = allowedDomains;
+  return t;
+}
+
+/** Lets the analyst open the articles it found (team news, press conferences). */
+export function webFetchTool(allowedDomains) {
+  const t = { type: "web_fetch_20260209", name: "web_fetch", max_uses: 6, max_content_tokens: 12000 };
   if (allowedDomains && allowedDomains.length) t.allowed_domains = allowedDomains;
   return t;
 }
@@ -180,7 +193,7 @@ export async function analyseMatch(client, usage, cfg, dossier, today) {
   const user = `Today is ${today} (UTC). Analyse this match.\n\n<dossier>\n${JSON.stringify(dossier)}\n</dossier>`;
   const raw = await callJson(client, usage, {
     model: cfg.analystModel, effort: cfg.analystEffort, system: SYSTEM_PROMPT + preferredSourcesNote(cfg.analystPreferredSources), user,
-    schema: ANALYSIS_SCHEMA, tools: [webSearchTool(cfg.analystAllowedDomains)], maxTokens: 10000,
+    schema: ANALYSIS_SCHEMA, tools: [webSearchTool(cfg.analystAllowedDomains), webFetchTool(cfg.analystAllowedDomains)], maxTokens: 16000,
   });
   return sanitize(raw);
 }

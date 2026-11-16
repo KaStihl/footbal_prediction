@@ -116,6 +116,17 @@ export async function fetchEspnMonth(fetchImpl, slug, compKey, ym) {
   return out;
 }
 
+/** Latest competition headlines (manager changes, big injuries, transfers) - context for the analyst. */
+export async function fetchEspnNews(fetchImpl, slug) {
+  const d = await getJson(fetchImpl, `${ESPN_BASE}/${slug}/news?limit=25`);
+  return (d.articles || []).map((a) => ({
+    headline: String(a.headline || "").slice(0, 200),
+    description: String(a.description || "").slice(0, 300),
+    published: a.published || null,
+    url: ((a.links || {}).web || {}).href || null,
+  })).filter((a) => a.headline);
+}
+
 // ---- 2) football-data.org ------------------------------------------------------
 
 const FD_STATUS = { FINISHED: "FT", AWARDED: "FT", SCHEDULED: "NS", TIMED: "NS", IN_PLAY: "LIVE", PAUSED: "LIVE", POSTPONED: "PST", SUSPENDED: "PST", CANCELLED: "CANC" };

@@ -111,7 +111,7 @@ export function settings(env = {}) {
     analystModel: str("ANALYST_MODEL", "claude-sonnet-5-5"),
     // weight of the statistical model when bookmaker odds exist (rest = market); 1 = model only
     modelWeight: Math.min(Math.max(parseFloat(env.MODEL_WEIGHT) || 0.35, 0), 1),
-    analystEffort: str("ANALYST_EFFORT", "medium"),
+    analystEffort: str("ANALYST_EFFORT", "high"),
     analystMaxMatches: int("ANALYST_MAX_MATCHES", 16),
     analystWindowHours: int("ANALYST_WINDOW_HOURS", 96),
     analystMaxAgeHours: int("ANALYST_MAX_AGE_HOURS", 20),

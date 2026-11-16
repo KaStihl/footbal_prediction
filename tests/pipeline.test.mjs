@@ -91,6 +91,7 @@ test("ESPN-only run: tabs, stats, odds, analyst clamp, cache, track record", asy
     }
   }
   assert.ok(pred.matches.some((m) => m.analyst), "some matches analysed");
+  assert.ok(pred.matches.every((m) => Array.isArray(m.news)) && pred.matches.some((m) => m.news.length), "competition headlines attached");
   assert.ok(meta.analyst.est_cost_usd > 0);
   const found = await runner.find(pred.matches[0].home.name);
   assert.ok(found.length > 0 && found[0].fixture_id, "find-fixtures helper");
@@ -181,9 +182,11 @@ test("analyst system prompt lists the preferred sources (configurable)", async (
   const { settings } = await import("../src/config.js");
   const AN = await import("../src/analyst.js");
   const seen = [];
-  const client = { beta: { messages: { create: async (p) => { seen.push(p.system[0].text); return { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ xg_mult_home: 1, xg_mult_away: 1, summary: "", key_factors: [], absences: [], lineups_confirmed: false, data_gaps: [] }) }] }; } } } };
+  const tools = [];
+  const client = { beta: { messages: { create: async (p) => { seen.push(p.system[0].text); tools.push(p.tools.map((x) => x.name)); return { stop_reason: "end_turn", usage: {}, content: [{ type: "text", text: JSON.stringify({ xg_mult_home: 1, xg_mult_away: 1, summary: "", key_factors: [], absences: [], lineups_confirmed: false, data_gaps: [] }) }] }; } } } };
   await AN.analyseMatch(client, {}, settings({}), { match: {} }, "2026-11-15");
   assert.match(seen[0], /uefa\.com/);
+  assert.deepEqual(tools[0], ["web_search", "web_fetch"]);
   assert.match(seen[0], /footballwebpages\.co\.uk/);
   assert.doesNotMatch(seen[0], /notjustok|krisyotam/);
   await AN.analyseMatch(client, {}, settings({ ANALYST_PREFERRED_SOURCES: "example.org" }), { match: {} }, "2026-11-15");

@@ -120,6 +120,7 @@ export function makeWorld(nowMs, { teamsPerLeague = 20, seed = 7, heavy = false 
     if (u.host === "site.api.espn.com") {
       const slug = u.pathname.split("/")[6];
       if (limits.espnDown.has(slug)) return reply({ code: 500 }, 500);
+      if (u.pathname.endsWith("/news")) return reply({ articles: [{ headline: `${slug}: manager sacked at a club`, description: "test", published: new Date(nowMs - 864e5).toISOString(), links: { web: { href: "https://example.com" } } }] });
       const league = SLUG[slug];
       const ym = p.dates;
       const events = league ? allOf(league).filter((f) => f.fixture.date.slice(0, 7).replace("-", "") === ym).map(espnEvent) : [];
