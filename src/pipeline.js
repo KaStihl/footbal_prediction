@@ -17,6 +17,11 @@ export class Pipeline extends DurableObject {
       const body = await this.ctx.storage.get(`out:${m[1]}`);
       return body ? new Response(body, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }) : json({ error: "no data yet" }, 404);
     }
+    if (url.pathname === "/auto" && request.method === "POST") {
+      const res = await this.runner.autoCheck();
+      if (res.started) await this.ctx.storage.setAlarm(Date.now() + 100);
+      return json(res);
+    }
     if (url.pathname === "/start" && request.method === "POST") {
       const { kind = "manual" } = await request.json().catch(() => ({}));
       const res = await this.runner.start(kind);

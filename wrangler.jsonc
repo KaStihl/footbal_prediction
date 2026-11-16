@@ -18,8 +18,9 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Pipeline"] }],
   "triggers": {
-    // daily 05:30 UTC + Thu-Sun 09:15 UTC refresh (team news, line-ups, odds)
-    "crons": ["30 5 * * *", "15 9 * * THU,FRI,SAT,SUN"]
+    // every 15 min a cheap check; a full run starts only Fri-Mon, 1-2 h before the day's
+    // first Premier League / Bundesliga kick-off (see Runner.autoCheck). Everything else: manual.
+    "crons": ["*/15 * * * *"]
   },
   "observability": { "enabled": true }
 }

@@ -29,7 +29,9 @@ Všetko beží v jednom Workeri, ktorý je napojený na tento repozitár (Worker
 Premenné pridané v dashboarde môže ďalší deploy z repa prepísať, iba ak sú definované aj vo `wrangler.jsonc` (tam nie sú, takže ostanú). Secrets ostávajú vždy.
 
 ## Plánovanie
-`wrangler.jsonc` → `triggers.crons`: denne 05:30 UTC a štvrtok až nedeľa 09:15 UTC. Ručne: tlačidlo **Prepočítať teraz** na stránke.
+* **Automaticky** len pred kolom Premier League a Bundesligy: v piatok, sobotu, nedeľu a pondelok 1–2 h pred prvým PL/BL zápasom dňa (raz za deň). Cron (`*/15 * * * *` vo `wrangler.jsonc`) každých 15 min len overí rozpis dňa z ESPN. Analytik pri automatickom behu robí iba víkendové kolo: zápasy daného dňa nanovo (zostavy, posledné správy), ostatné zápasy kola len ak ešte nemajú analýzu.
+* **Ručne** (tlačidlo **Prepočítať teraz**): všetko vrátane Ligy národov a záložky Zaujímavé.
+* Okno sa dá zmeniť premennými `AUTO_LEAD_MIN` / `AUTO_LEAD_MAX` (minúty pred výkopom, predvolene 60 / 120).
 
 ## Zdroje dát (reťazec)
 1. **ESPN** (bez kľúča, neoficiálne verejné JSON): rozpis, výsledky, štatistiky zápasov (strely, strely na bránu, držanie lopty) a kurzy DraftKings, mesiac po mesiaci.

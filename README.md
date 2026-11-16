@@ -10,7 +10,7 @@ Cloudflare Worker "footbal-prediction"
  ├─ statická stránka  site/
  ├─ /data/*.json      výstupy z Durable Object
  ├─ /api/run, /api/status, /api/find-fixtures
- └─ Cron (05:30 UTC denne, Št–Ne aj 09:15 UTC) ─► Durable Object "Pipeline"
+ └─ Cron (každých 15 min kontrola; výpočet Pi–Po 1–2 h pred prvým PL/BL zápasom dňa) ─► Durable Object "Pipeline"
         krok po kroku (alarmy, každý krok pár ms CPU):
         zdroje: ESPN → football-data.org → API-Football (zápasy, výsledky, strely, držanie lopty, kurzy)
         → štatistický model → výber zápasov do záložiek → Claude analytici → zverejnenie

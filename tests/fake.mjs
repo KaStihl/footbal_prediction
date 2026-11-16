@@ -123,7 +123,8 @@ export function makeWorld(nowMs, { teamsPerLeague = 20, seed = 7, heavy = false 
       if (u.pathname.endsWith("/news")) return reply({ articles: [{ headline: `${slug}: manager sacked at a club`, description: "test", published: new Date(nowMs - 864e5).toISOString(), links: { web: { href: "https://example.com" } } }] });
       const league = SLUG[slug];
       const ym = p.dates;
-      const events = league ? allOf(league).filter((f) => f.fixture.date.slice(0, 7).replace("-", "") === ym).map(espnEvent) : [];
+      const key = (iso) => (ym.length === 8 ? iso.slice(0, 10).replaceAll("-", "") : iso.slice(0, 7).replace("-", ""));
+      const events = league ? allOf(league).filter((f) => key(f.fixture.date) === ym).map(espnEvent) : [];
       return reply({ events });
     }
     if (u.host === "api.football-data.org") {

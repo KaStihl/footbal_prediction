@@ -50,6 +50,8 @@ export function seasonOfMonth(ym) {
 
 export const NEUTRAL_COMPETITIONS = new Set(["euro", "world_cup"]);
 export const WEEKEND_COMPETITIONS = ["premier_league", "bundesliga"];
+// local weekdays with automatic runs (JS getUTCDay of the local date): Fri, Sat, Sun, Mon
+export const AUTO_DAYS = new Set([5, 6, 0, 1]);
 export const NATIONS_LEAGUE = "nations_league";
 
 // Tuned by a walk-forward backtest on ESPN data (Nov 2026): club 611 matches, national 540 matches;
@@ -109,6 +111,9 @@ export function settings(env = {}) {
     espnMaxCalls: int("ESPN_MAX_CALLS", 400),
     anthropicKey: env.ANTHROPIC_API_KEY || "",
     analystModel: str("ANALYST_MODEL", "claude-sonnet-5-5"),
+    // automatic runs: Fri-Mon, this many minutes before the day's first PL/BL kick-off (window)
+    autoLeadMin: int("AUTO_LEAD_MIN", 60),
+    autoLeadMax: int("AUTO_LEAD_MAX", 120),
     // weight of the statistical model when bookmaker odds exist (rest = market); 1 = model only
     modelWeight: Math.min(Math.max(parseFloat(env.MODEL_WEIGHT) || 0.35, 0), 1),
     analystEffort: str("ANALYST_EFFORT", "high"),

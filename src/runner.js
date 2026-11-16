@@ -68,16 +68,51 @@ export class Runner {
     return this.storage.put(key, JSON.stringify(obj));
   }
 
-  async start(kind) {
+  async start(kind, { day = null } = {}) {
     const job = await this.storage.get("job");
     const now = this.now();
     if (job && !job.done && now - job.started < 3 * 3600e3) return { started: false, reason: "a run is already in progress", job: brief(job) };
     const fresh = {
-      id: now.toString(36), kind, started: now, steps: initialSteps(now), i: 0, attempt: 0, warnings: [],
+      id: now.toString(36), kind, day, started: now, steps: initialSteps(now), i: 0, attempt: 0, warnings: [],
       apiCalls: 0, espnCalls: 0, fdCalls: 0, remaining: null, usage: {}, analysed: 0, espnFail: {}, done: false,
     };
     await this.storage.put("job", fresh);
     return { started: true, job: brief(fresh) };
+  }
+
+  /**
+   * Automatic runs (called by the cron every 15 min): only on Fri-Mon, once per day,
+   * autoLeadMax..autoLeadMin minutes before the first Premier League / Bundesliga kick-off of
+   * that (local) day. Kick-off times come from ESPN's scoreboard of the day (cached 6 h).
+   */
+  async autoCheck() {
+    const now = this.now();
+    const day = D.localDate(now, cfgm.TZ);
+    const [y, m, d] = day.split("-").map(Number);
+    if (!cfgm.AUTO_DAYS.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) return { started: false, reason: "no automatic runs on this weekday" };
+    if (await this.storage.get(`auto_done:${day}`)) return { started: false, reason: `automatic run for ${day} already done` };
+    let sched = await this.getJ(`sched:${day}`, null);
+    if (!sched || now - sched.at > 6 * 3600e3) {
+      const comps = cfgm.competitions(new Date(now));
+      const kicks = [];
+      const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+      for (const key of cfgm.WEEKEND_COMPETITIONS) {
+        for (const ymd of [day, next]) {
+          try {
+            const r = await S.fetchEspnMonth(this.fetch, comps[key].espn, key, ymd.replaceAll("-", ""));
+            for (const row of r.rows) if (row[F.ST] === "NS" && D.localDate(row[F.T], cfgm.TZ) === day) kicks.push(row[F.T]);
+          } catch { /* keep going with what we have */ }
+        }
+      }
+      sched = { at: now, first: kicks.length ? Math.min(...kicks) : null };
+      await this.putJ(`sched:${day}`, sched);
+    }
+    if (!sched.first) return { started: false, reason: `no Premier League / Bundesliga match on ${day}` };
+    const lead = (sched.first - now) / 60000;
+    if (lead > this.cfg.autoLeadMax || lead < this.cfg.autoLeadMin - 45) return { started: false, reason: `first kick-off ${new Date(sched.first).toISOString()}, ${Math.round(lead)} min away` };
+    const res = await this.start("auto", { day });
+    if (res.started) await this.storage.put(`auto_done:${day}`, now);
+    return res;
   }
 
   /** Execute the current step; returns the delay (ms) until the next one, or null when finished. */
@@ -414,16 +449,27 @@ export class Runner {
     const entries = await this.getJ("entries", []);
     const state = await this.getJ("analysis", { matches: {}, rounds: {} });
     const prio = { weekend: 0, nations_league: 1, interesting: 2 };
-    const cands = entries.filter((e) => Date.parse(e.kickoff) - now <= this.cfg.analystWindowHours * 3600e3)
+    const auto = job.kind === "auto";
+    // automatic runs: only the PL/BL weekend round; the matches of the day get a fresh analysis
+    // (line-ups and late team news), the rest of the round only if it has none yet.
+    const cands = entries
+      .filter((e) => Date.parse(e.kickoff) - now <= this.cfg.analystWindowHours * 3600e3)
+      .filter((e) => !auto || e.tabs.includes("weekend"))
       .sort((a, b) => Math.min(...a.tabs.map((t) => prio[t])) - Math.min(...b.tabs.map((t) => prio[t])) || (a.kickoff < b.kickoff ? -1 : 1));
     const insert = [];
     for (const e of cands) {
       const basis = analysisBasis(e);
-      if (!needsAnalysis(state.matches[e.id], basis, now, this.cfg.analystMaxAgeHours * 3600e3)) continue;
+      const cur = state.matches[e.id];
+      const today = auto && D.localDate(Date.parse(e.kickoff), cfgm.TZ) === job.day;
+      const need = auto
+        ? (today ? needsAnalysis(cur, basis, now, 3 * 3600e3) : !cur || cur.v !== ANALYSIS_VERSION)
+        : needsAnalysis(cur, basis, now, this.cfg.analystMaxAgeHours * 3600e3);
+      if (!need) continue;
       insert.push({ t: "analyst", id: e.id });
       if (insert.length >= this.cfg.analystMaxMatches) break;
     }
-    insert.push({ t: "round", tab: "weekend" }, { t: "round", tab: "nations_league" });
+    insert.push({ t: "round", tab: "weekend" });
+    if (!auto) insert.push({ t: "round", tab: "nations_league" });
     return { insert };
   }
 

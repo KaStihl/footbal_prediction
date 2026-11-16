@@ -156,6 +156,36 @@ test("international break: weekend tab moves to the next weekend with PL/BL matc
   assert.ok(pred.matches.some((m) => m.tabs.includes("weekend")));
 });
 
+test("automatic runs: Fri-Mon only, 1-2 h before the first PL/BL kick-off, once per day; NL not analysed", async () => {
+  const world = makeWorld(NOW);
+  // first PL/BL match on Saturday 14 Nov (local)
+  const sat = [...world.leagues["39:2026"], ...world.leagues["78:2026"]]
+    .map((f) => Date.parse(f.fixture.date)).filter((t) => D.localDate(t, "Europe/Bratislava") === "2026-11-14").sort((a, b) => a - b)[0];
+  assert.ok(sat, "fake has PL/BL matches on Saturday");
+  let now = NOW; // Wednesday
+  const storage = new FakeStorage();
+  const counter = { n: 0, nl: 0 };
+  const client = () => {
+    const c = fakeClaude(counter);
+    const f = async (p) => { if (/UEFA Nations League/.test(p.messages[0].content)) counter.nl++; return c.messages.create(p); };
+    return { beta: { messages: { create: f } }, messages: { create: f } };
+  };
+  const runner = new Runner(storage, { ANTHROPIC_API_KEY: "a", ANALYST_MAX_MATCHES: "100" }, { fetch: world.fetchImpl, makeClient: client, now: () => now });
+  assert.equal((await runner.autoCheck()).started, false, "Wednesday: no automatic run");
+  now = sat - 3 * 3600e3;
+  assert.equal((await runner.autoCheck()).started, false, "3 h before: too early");
+  now = sat - 100 * 60e3;
+  const res = await runner.autoCheck();
+  assert.equal(res.started, true, JSON.stringify(res));
+  for (let i = 0; i < 2000; i++) if ((await runner.tick()) === null) break;
+  const job = await storage.get("job");
+  assert.equal(job.kind, "auto");
+  assert.equal(counter.nl, 0, "Nations League not analysed automatically");
+  assert.ok(counter.n > 0, "weekend matches analysed");
+  now = sat - 70 * 60e3;
+  assert.equal((await runner.autoCheck()).started, false, "only once per day");
+});
+
 test("no analyst key -> model only, with a warning", async () => {
   const world = makeWorld(NOW);
   const storage = new FakeStorage();

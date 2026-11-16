@@ -32,6 +32,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(pipeline(env).fetch(new Request("https://pipeline/start", { method: "POST", body: JSON.stringify({ kind: "cron" }) })));
+    // every 15 min: the Durable Object decides whether an automatic run is due (Fri-Mon, before PL/BL)
+    ctx.waitUntil(pipeline(env).fetch(new Request("https://pipeline/auto", { method: "POST" })));
   },
 };
