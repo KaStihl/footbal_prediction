@@ -137,6 +137,9 @@
     if (inj.length && !(a && a.absences.some((x) => x.source_type === "api_football"))) {
       html += `<h4>Zranenia podľa API-Football</h4><ul class="plain">${inj.map((i) => `<li>${esc(i.player)} <span class="muted">(${esc(i.reason || i.type || "")})</span></li>`).join("")}</ul>`;
     }
+    if (e.news && e.news.length) {
+      html += `<h4>Aktuálne správy zo súťaže (ESPN)</h4><ul class="plain">${e.news.slice(0, 5).map((n) => `<li>${esc(n.headline)}${n.published ? ` <span class="muted">(${esc(n.published.slice(0, 10))})</span>` : ""}</li>`).join("")}</ul>`;
+    }
     const p3 = (x) => `${pct(x.p_home)} / ${pct(x.p_draw)} / ${pct(x.p_away)}`;
     html += `<h4>Ako vznikol tip</h4><ul class="plain"><li>Štatistický model: ${p3(e.model)} (xG ${e.model.xg_home.toFixed(2)} : ${e.model.xg_away.toFixed(2)})</li>`;
     if (e.blend) html += `<li>Trh (kurzy bez marže): ${pct(e.blend.market.home)} / ${pct(e.blend.market.draw)} / ${pct(e.blend.market.away)}</li><li>Kombinácia ${Math.round(e.blend.model_weight * 100)} % model + ${Math.round((1 - e.blend.model_weight) * 100)} % trh: ${p3(e.base)}</li>`;
